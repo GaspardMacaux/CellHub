@@ -184,6 +184,25 @@ ui <- dashboardPage(
                     tags$ul(
                       tags$li("If you have already processed your data with Seurat, you can load the saved RDS file directly"),
                       tags$li("This option allows you to resume analysis from a previously saved point")
+                    ),
+                    div(style = "border-top: 1px solid #ddd; margin-top: 20px; padding-top: 10px; color: #666; font-size: 0.9em;",
+                        p("Sources:", 
+                          tags$ul(
+                            tags$li(
+                              tags$a(href="https://satijalab.org/seurat/articles/get_started_v5_new", 
+                                     "Seurat V5 Introduction Vignette", 
+                                     target="_blank")
+                            ),
+                            tags$li(
+                              "Hao et al., Dictionary learning for integrative, multimodal and scalable single-cell analysis. ",
+                              tags$i("Nature Biotechnology"), 
+                              " 42, 293–304 (2024). ",
+                              tags$a(href="https://doi.org/10.1038/s41587-023-02100-3", 
+                                     "DOI: 10.1038/s41587-023-02100-3", 
+                                     target="_blank")
+                            )
+                          )
+                        )
                     )
                 ),
 
@@ -489,17 +508,19 @@ ui <- dashboardPage(
                   fluidRow(
                     column(width = 4,
                            pickerInput("gene_select", "Select Genes:", choices = NULL, multiple = TRUE,
-                                       options = list(`actions-box` = TRUE, `live-search` = TRUE))
+                                       options = list(`actions-box` = TRUE, `live-search` = TRUE)),
+                                       numericInput("title_text_size", "Title Size:", value = 14, min = 8, max = 32)
                     ),
-                   column(4,
-                          selectInput("viz_assay", "Select Assay:",
-                                      choices = c("RNA", "integrated"),
-                                      selected = "RNA")
+                    column(4,
+                           selectInput("viz_assay", "Select Assay:",
+                                       choices = NULL,  # On laisse vide, sera mis à jour dynamiquement
+                                       selected = "RNA"),
+                                       numericInput("axis_text_size", "Axis Text Size:", value = 12, min = 6, max = 30),
+                           numericInput("axis_line_width", "Axis Line Width:", value = 1, min = 0.5, max = 3, step = 0.1)
                     ),
                     column(width = 4,
                            numericInput("dpi_plot", "Images resolution for download:", value = 300, min = 72, step = 72)
-                    ),
-                
+                    )
                   )
               ),
 
@@ -532,14 +553,14 @@ ui <- dashboardPage(
                   plotOutput("feature_plot")
               ),
 
-              # Violin Plot Box
+              # Dans l'UI, ajoutons le checkbox manquant
               box(title = "Violin Plot", 
                   status = "primary", 
                   solidHeader = TRUE, 
                   collapsible = TRUE, 
                   width = 14,
                   textInput("gene_list_vln", "Selected genes:", value = ""),
-                  selectInput("cluster_order_vln",  # Changé ici
+                  selectInput("cluster_order_vln",
                               "Order of Clusters", 
                               choices = NULL, 
                               multiple = TRUE),
@@ -550,16 +571,18 @@ ui <- dashboardPage(
                     column(width = 3,
                            checkboxInput("hide_vln_points", "Hide Points", FALSE)
                     ),
-                    column(width = 3,
+                    column(width = 2,
                            checkboxInput("add_noaxes_vln", "Remove Axes", FALSE)
                     ),
-                    column(width = 3,
+                    column(width = 2,
+                           checkboxInput("add_nolegend_vln", "Remove Legend", FALSE)  # Ajouté ici
+                    ),
+                    column(width = 2,
                            downloadButton("downloadVlnPlot", "Download Plot")
                     )
                   ),
                   plotOutput("vln_plot")
               ),
-              
               # Dot Plot Box
               box(title = "Dot Plot", 
                   status = "primary", 
@@ -973,8 +996,27 @@ ui <- dashboardPage(
         fluidRow(
 
           box(title = "Scaling & PCA", status = "primary", solidHeader = TRUE, collapsible = TRUE, width = 12,
-              actionButton("runScalePCA", "Run Scaling, PCA and Elbow Plot"),
+              fluidRow(
+                column(6,
+                       actionButton("runScalePCA", "Run Scaling, PCA and Elbow Plot")
+                ),
+                column(6,
+                       actionButton("runHarmony", "Run Harmony Integration"),
+                       actionButton("exclamation_harmony", label = icon("exclamation-triangle"), 
+                                    `data-toggle` = "popover", 
+                                    `data-html` = "true",
+                                    `data-content` = "Harmony is an efficient algorithm for integrating multiple datasets. It corrects batch effects while preserving biological variation.")
+                )
+              ),
               plotOutput("elbow_plot2")
+          ),
+          box(title = "Harmony Settings", status = "primary", solidHeader = TRUE, collapsible = TRUE, width = 12,
+              fluidRow(
+                column(4,
+                       selectInput("harmony_vars", "Variables to integrate:", choices = NULL, multiple = TRUE),
+                       numericInput("harmony_dims", "Number of dimensions:", value = 15, min = 1)
+                )
+              )
           ),
 
 
@@ -1355,13 +1397,37 @@ ui <- dashboardPage(
 
 
       ############################## Trajectory/Monocle Conversion and trajectory ##############################
-      tabItem(tabName = "trajectory",
-              div(class = "well", style = "margin-bottom: 20px;",
-                  h2("Trajectory Analysis", style = "color: #2c3e50; margin-bottom: 15px;"),
-                  p(style = "font-size: 16px; color: #666;",
-                    "Analyze cell fate decisions and developmental trajectories using Monocle3. This analysis helps understand the progression and differentiation paths of cells."
-                  )
+      tabItem(
+        tabName = "trajectory",
+        fluidRow(
+          # Information box - width réduit pour moins dominer la page
+          box(title = "About Trajectory Analysis with Monocle", status = "info", solidHeader = TRUE, collapsible = TRUE, width = 12,
+              p("Monocle is a tool for analyzing single-cell expression data that helps reconstruct the developmental/differentiation 
+                trajectories of cells. It orders cells based on their transcriptional similarity to create a 'pseudotime' trajectory."),
+              
+              h4("Key Features:"),
+              tags$ul(
+                tags$li(strong("Convert to Monocle:"), "Transforms your Seurat object into a Monocle cell_data_set object"),
+                tags$li(strong("Construct Graph:"), "Creates a trajectory graph based on transcriptional similarities"),
+                tags$li(strong("Root Selection:"), "Identifies the starting point of the biological process"),
+                tags$li(strong("Pseudotime Analysis:"), "Orders cells along a continuous trajectory representing their progress through the biological process")
               ),
+              
+              # Conseils simplifiés
+              tags$ul(
+                tags$li(icon("lightbulb"), " Tip: Choose a root cell from a population you believe represents the starting state of your process."),
+                tags$li(icon("exclamation-triangle"), " Note: The number of clusters (k) affects trajectory construction - start with a moderate value.")
+              ),
+              
+              # Source en plus petit
+              tags$small(
+                "Source: ", 
+                tags$a(href="http://cole-trapnell-lab.github.io/monocle-release/", 
+                       "Monocle Documentation", 
+                       target="_blank"),
+                " - Trapnell Lab"
+              )
+          )),
 
               fluidRow(
                 box(title = "Analysis Steps", status = "primary", solidHeader = TRUE, width = 12,
@@ -1393,35 +1459,73 @@ ui <- dashboardPage(
       )
       ,
       ############################## Trajectory/Differential expressed genes along the trajectory ##############################
-      tabItem(tabName = "genes_pseudotime",
-              # Header with description
-              div(class = "well",
-                  h2("Differential Gene Expression Analysis Over Pseudotime"),
-                  p("Analyze how gene expression changes along the trajectory path to identify dynamically regulated genes during cellular transitions.")
-              ),
-
-              fluidRow(
-                box(title = "Differential Expression Analysis", status = "primary", solidHeader = TRUE, width = 12,
-                    column(4, actionButton("run_diff_gene_pseudotime", "Run Differential Gene Test", class = "btn-primary")),
-                    column(4, downloadButton("download_pseudotime_diff_genes", "Download Results (CSV)", class = "btn-info")),
-                    column(4, numericInput("sig_genes_cutoff", "q-value cutoff:", value = 0.05, min = 0, max = 1, step = 0.01)),
-                    DTOutput("diffGeneTable")
-                ),
-
-                box(title = "Gene Expression Visualization", status = "primary", solidHeader = TRUE, width = 12,
-                    column(6,
-                           pickerInput("gene_picker", "Select Genes:", choices = NULL, multiple = TRUE, options = list(`actions-box` = TRUE, `live-search` = TRUE)),
-                           actionButton("visualize_gene_trajectory", "Plot Selected Genes", class = "btn-success")
-                    ),
-                    column(6,
-                           numericInput("dpi_selection", "Plot Resolution (DPI):", value = 300, min = 72, max = 1200),
-                           downloadButton("download_trajectory_plot", "Download Plot", class = "btn-info")
-                    ),
-                    plotOutput("geneTrajectoryPlot", height = "500px")
+      tabItem(
+        tabName = "genes_pseudotime",
+        # Information Box
+        box(title = "About Pseudotime Gene Expression Analysis", status = "info", solidHeader = TRUE, collapsible = TRUE, width = 14,
+            p("This analysis identifies genes that change their expression patterns along the trajectory, revealing the molecular progression 
+              of cells through biological processes."),
+            
+            h4("Analysis Steps:"),
+            tags$ul(
+              tags$li(strong("Differential Gene Test:"), "Identifies genes that significantly change expression over pseudotime"),
+              tags$li(strong("Expression Visualization:"), "Plots expression patterns of selected genes along the trajectory"),
+              tags$li(strong("Result Export:"), "Download differential expression results for further analysis")
+            ),
+            
+            div(style="background-color: #f8f9fa; padding: 10px; border-radius: 5px; margin-top: 10px;",
+                tags$ul(
+                  tags$li(icon("lightbulb"), " Tip: Focus on genes with low q-values for the most reliable results"),
+                  tags$li(icon("info-circle"), " The q-value cutoff controls the false discovery rate in your analysis"),
+                  tags$li(icon("chart-line"), " Visualize multiple genes together to identify co-regulated patterns")
                 )
-              )
-      )
-      ,
+            ),
+            
+            # Source citation
+            div(style = "border-top: 1px solid #ddd; margin-top: 20px; padding-top: 10px; color: #666; font-size: 0.9em;",
+                p("For more information, see: ",
+                  tags$a(href="http://cole-trapnell-lab.github.io/monocle-release/docs/#differentialgetest-details-and-options", 
+                         "Monocle Documentation - Differential Expression Testing",
+                         target="_blank")
+                )
+            )
+        ),
+        
+        fluidRow(
+          box(title = "Differential Expression Analysis", status = "primary", solidHeader = TRUE, width = 12,
+              column(4, 
+                     actionButton("run_diff_gene_pseudotime", "Run Differential Gene Test", class = "btn-primary"),
+                     div(style="margin-top: 5px;",
+                         "Identifies genes that change significantly over pseudotime")
+              ),
+              column(4, 
+                     downloadButton("download_pseudotime_diff_genes", "Download Results (CSV)", class = "btn-info"),
+                     div(style="margin-top: 5px;",
+                         "Export complete analysis results")
+              ),
+              column(4, 
+                     numericInput("sig_genes_cutoff", "q-value cutoff:", value = 0.05, min = 0, max = 1, step = 0.01),
+                     div(style="margin-top: 5px;",
+                         "Adjust significance threshold for differential expression")
+              ),
+              DTOutput("diffGeneTable")
+          ),
+          
+          box(title = "Gene Expression Visualization", status = "primary", solidHeader = TRUE, width = 12,
+              column(6,
+                     pickerInput("gene_picker", "Select Genes:", choices = NULL, 
+                                 multiple = TRUE, 
+                                 options = list(`actions-box` = TRUE, `live-search` = TRUE)),
+                     actionButton("visualize_gene_trajectory", "Plot Selected Genes", class = "btn-success")
+              ),
+              column(6,
+                     numericInput("dpi_selection", "Plot Resolution (DPI):", value = 300, min = 72, max = 1200),
+                     downloadButton("download_trajectory_plot", "Download Plot", class = "btn-info")
+              ),
+              plotOutput("geneTrajectoryPlot", height = "500px")
+          )
+        )
+      ),
     ############################## NicheNet UI ##############################
     # UI complète de l'onglet NicheNet avec introduction et explication
     tabItem(
@@ -1444,10 +1548,26 @@ ui <- dashboardPage(
               tags$li(a("A ligand-target matrix file", href = "https://zenodo.org/record/7074291/files/ligand_target_matrix_nsga2r_final.rds", target = "_blank")),
               tags$li(a("Weighted networks file for ligand-receptor interactions", href = "https://zenodo.org/record/7074291", target = "_blank"))
             ),
-            p("You can download these resources from the links above."),
-
-            # Centered button for data loading
-            div(style = "text-align: center; margin-top: 20px;",  # Style for centering
+            div(style = "border-top: 1px solid #ddd; margin-top: 20px; padding-top: 10px; color: #666; font-size: 0.9em;",
+                p("Sources:", 
+                  tags$ul(
+                    tags$li(
+                      tags$a(href="https://github.com/saeyslab/nichenetr", 
+                             "NicheNet GitHub Repository", 
+                             target="_blank")
+                    ),
+                    tags$li(
+                      "Browaeys et al., NicheNet: modeling intercellular communication by linking ligands to target genes. ",
+                      tags$i("Nature Methods"), 
+                      " 17, 159–162 (2020). ",
+                      tags$a(href="https://doi.org/10.1038/s41592-019-0667-5", 
+                             "DOI: 10.1038/s41592-019-0667-5", 
+                             target="_blank")
+                    )
+                  )
+                )
+            ),
+         div(style = "text-align: center; margin-top: 20px;",  
                 actionButton("open_modal_nichenet", "Open Data Loading Menu", icon = icon("upload")),
                 verbatimTextOutput("load_data_status_nichenet")
             )
@@ -1605,8 +1725,25 @@ ui <- dashboardPage(
               tags$li(HTML("You can find more resources on the ",
                            "<a href='https://zenodo.org/record/7074291' target='_blank'>Zenodo repository</a>"))
             ),
-            p("Download these files before starting your analysis."),
-
+            div(style = "border-top: 1px solid #ddd; margin-top: 20px; padding-top: 10px; color: #666; font-size: 0.9em;",
+                p("Sources:", 
+                  tags$ul(
+                    tags$li(
+                      tags$a(href="https://github.com/saeyslab/multinichenetr", 
+                             "MultiNicheNet GitHub Repository", 
+                             target="_blank")
+                    ),
+                    tags$li(
+                      "Browaeys et al., MultiNicheNet: a flexible framework for differential cell-cell communication analysis from multi-sample multi-condition single-cell transcriptomics data. ",
+                      tags$i("bioRxiv"), 
+                      " (2023). ",
+                      tags$a(href="https://doi.org/10.1101/2023.06.13.544751", 
+                             "DOI: 10.1101/2023.06.13.544751", 
+                             target="_blank")
+                    )
+                  )
+                )
+            ),
             # Centered button for data loading
             div(style = "text-align: center; margin-top: 20px;",
                 actionButton("open_modal", "Open Data Loading Menu", icon = icon("upload")),

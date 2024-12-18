@@ -19,14 +19,20 @@
       shinyjs::disable("add_metadata")
 
       cleanWorkspaceMultipleDatasets <- function() {
-        # Réinitialisation des objets réactifs
+        message("Cleaning multiple datasets workspace...")
+
+        # Nettoie uniquement les objets réactifs des datasets multiples
         multiple_datasets_object(NULL)
         seurat_objects <<- list()
         data_loaded <<- list()
         merged_gene_tables <<- list()
         rv_metadata$num_fields <- 1
 
-        # Nettoyage des plots réactifs
+        # Utilise un dossier temporaire spécifique pour les datasets multiples
+        temp_dir <- file.path(tempdir(), "multiple_datasets")
+        dir.create(temp_dir, showWarnings = FALSE, recursive = TRUE)
+
+        # Nettoie les plots réactifs
         clustering_plot_merge(NULL)
         feature_plot_merge(NULL)
         vln_plot_merge(NULL)
@@ -34,23 +40,17 @@
         ridge_plot_merge(NULL)
         heatmap_plot_multidataset(NULL)
 
-        # Suppression des répertoires temporaires s'ils existent
-        if (dir.exists("unzipped")) {
-          unlink("unzipped", recursive = TRUE, force = TRUE)
-        }
-        if (dir.exists("tempData")) {
-          unlink("tempData", recursive = TRUE, force = TRUE)
+        # Nettoie uniquement les dossiers liés aux datasets multiples
+        unzipped_dirs <- list.files(temp_dir, pattern = "^unzipped", full.names = TRUE)
+        if(length(unzipped_dirs) > 0) {
+          sapply(unzipped_dirs, unlink, recursive = TRUE)
         }
 
-        # Suppression de tous les dossiers commençant par "unzipped"
-        unzipped_dirs <- list.dirs(path = ".", full.names = TRUE, recursive = FALSE)
-        unzipped_dirs <- unzipped_dirs[grepl("unzipped", unzipped_dirs)]
-        if (length(unzipped_dirs) > 0) {
-          sapply(unzipped_dirs, unlink, recursive = TRUE, force = TRUE)
-        }
-        rm(list=ls())
-        print(list.files(recursive = TRUE))
+        gc()
+        message("Multiple datasets workspace cleaned.")
       }
+
+
 
       output$datasets_loaded <- reactive({
         !is.null(multiple_datasets_object())
@@ -453,7 +453,51 @@
         showNotification(paste0("Scaling and PCA errors:", e$message), type = "error")
       })
     })
+      # Update Harmony variables choices
+      observe({
+        req(multiple_datasets_object())
+        meta_cols <- colnames(multiple_datasets_object()@meta.data)
+        updateSelectInput(session, "harmony_vars",
+                          choices = meta_cols,
+                          selected = "dataset")
+      })
 
+      # Run Harmony integration
+      observeEvent(input$runHarmony, {
+        req(multiple_datasets_object())
+
+        tryCatch({
+          showModal(modalDialog(
+            title = "Please Wait",
+            "Running Harmony integration...",
+            easyClose = FALSE,
+            footer = NULL
+          ))
+
+          seurat_object_temp <- multiple_datasets_object()
+
+          # Run Harmony
+          seurat_object_temp <- RunHarmony(
+            object = seurat_object_temp,
+            group.by.vars = input$harmony_vars,
+            dims.use = 1:input$harmony_dims,
+            plot_convergence = TRUE
+          )
+
+          # Set Harmony as default reduction
+          DefaultAssay(seurat_object_temp) <- "integrated"
+
+          # Update the Seurat object
+          multiple_datasets_object(seurat_object_temp)
+
+          showNotification("Harmony integration completed successfully!", type = "message")
+          removeModal()
+
+        }, error = function(e) {
+          removeModal()
+          showNotification(paste("Error in Harmony integration:", e$message), type = "error")
+        })
+      })
 
     # Observer forfind Clusters and display UMAP
     clustering_plot_merge <- reactiveVal()
@@ -862,7 +906,7 @@
 
     # FeaturePlot of selected gene
     feature_plot_merge <- reactiveVal()
-    
+
     # Feature Plot
     observeEvent(input$runFeaturePlot, {
       tryCatch({
@@ -871,11 +915,11 @@
         seurat_object <- multiple_datasets_object()
         req(seurat_object)
         DefaultAssay(seurat_object) <- input$viz_assay_merge
-        
+
         # Préparer les paramètres de seuils
         min_cut <- if (!is.na(input$min_cutoff_feature_merge)) input$min_cutoff_feature_merge else NA
         max_cut <- if (!is.na(input$max_cutoff_feature_merge)) input$max_cutoff_feature_merge else NA
-        
+
         if(input$group_by_select == "dataset") {
           # Créer un plot pour chaque dataset
           plot_list <- lapply(unique(seurat_object$dataset), function(ds) {
@@ -892,7 +936,7 @@
             ) +
               ggtitle(ds) +
               theme(plot.title = element_text(size = 14, face = "bold"))
-            
+
             # Appliquer les options
             if(input$add_nolegend_feature_merge) p <- p + NoLegend()
             if(input$add_noaxes_feature_merge) p <- p + NoAxes()
@@ -927,7 +971,7 @@
 
     # VlnPlot of the selected gene
     vln_plot_merge <- reactiveVal()
-    
+
     # Violin Plot
     observeEvent(input$runVlnPlot, {
       tryCatch({
@@ -936,7 +980,7 @@
         seurat_object <- multiple_datasets_object()
         req(seurat_object)
         DefaultAssay(seurat_object) <-  input$viz_assay_merge
-        
+
         # Plot de base avec group.by
         plot <- VlnPlot(
           seurat_object,
@@ -944,24 +988,24 @@
           group.by = input$group_by_select,
           pt.size = ifelse(input$hide_vln_points_merge, 0, 1)
         )
-        
+
         # Options de base uniquement
         if (input$add_noaxes_vln_merge) plot <- plot + NoAxes()
         if (input$add_nolegend_vln_merge) plot <- plot + NoLegend()
-        
+
         vln_plot_merge(plot)
       }, error = function(e) {
         showNotification(paste("Error in VlnPlot: ", e$message), type = "error")
       })
     })
-    
+
     output$VlnPlot2 <- renderPlot({
       req(vln_plot_merge())
       vln_plot_merge()
     })
-    
-    
-    
+
+
+
 
     # DotPlot reactive value
     dot_plot_merge <- reactiveVal()

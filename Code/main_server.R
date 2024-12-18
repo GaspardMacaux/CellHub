@@ -40,7 +40,7 @@ library(SeuratDisk)
 library(SeuratData)
 library(monocle3)
 library(SingleCellExperiment)
-
+library(harmony)
 
 library(anndata)
 library(clustree)
@@ -62,14 +62,14 @@ options(shiny.maxRequestSize = 20000*1024^2)  # 2000 MB
 source("single_dataset_server.R")
 source("multiple_datasets_server.R")
 source("trajectory_server.R")
-source("multinichenetr_server.R")
+source("multinichenet_server.R")
 source("main_ui.R")
 
 server <- function(input, output, session) {
   single_dataset_server(input, output, session)
   multiple_datasets_server(input, output, session)
   trajectory_server(input, output, session)
-  multinichenetr_server(input, output, session)
+  multinichenet_server(input, output, session)
 
 }
 

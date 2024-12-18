@@ -15,12 +15,11 @@ single_dataset_server <- function(input, output, session) {
 
   # Function to clean the workspace
   cleanWorkspaceSingleDataset <- function() {
-    message("Cleaning workspace...")
+    message("Cleaning single dataset workspace...")
 
-    # Clean reactive objects
+    # Nettoie uniquement les objets réactifs du single dataset
     single_dataset_object(NULL)
     gene_list$features <- NULL
-
     subset_seurat(NULL)
     clustering_plot(NULL)
     feature_plot(NULL)
@@ -30,28 +29,27 @@ single_dataset_server <- function(input, output, session) {
     heatmap_plot(NULL)
     scatter_plot(NULL)
 
-    # Delete temp directories if they exist
-    if (dir.exists("tempdir")) {
-      unlink("tempdir", recursive = TRUE, force = TRUE)
-      message("Deleted tempdir.")
+    # Crée et utilise un dossier temporaire spécifique pour single dataset
+    temp_dir <- file.path(tempdir(), "single_dataset")
+    dir.create(temp_dir, showWarnings = FALSE, recursive = TRUE)
+
+    # Nettoie uniquement les dossiers liés au single dataset
+    if (dir.exists(file.path(temp_dir, "tempdir"))) {
+      unlink(file.path(temp_dir, "tempdir"), recursive = TRUE)
     }
-    if (dir.exists("dataDir")) {
-      unlink("dataDir", recursive = TRUE, force = TRUE)
-      message("Deleted dataDir.")
+    if (dir.exists(file.path(temp_dir, "dataDir"))) {
+      unlink(file.path(temp_dir, "dataDir"), recursive = TRUE)
     }
 
-    # Delete all directories starting with "unzipped"
-    unzipped_dirs <- list.dirs(path = ".", full.names = TRUE, recursive = FALSE)
-    unzipped_dirs <- unzipped_dirs[grepl("unzipped", unzipped_dirs)]
+    # Nettoie les dossiers unzipped spécifiques au single dataset
+    unzipped_dirs <- list.files(temp_dir, pattern = "^unzipped", full.names = TRUE)
     if (length(unzipped_dirs) > 0) {
-      sapply(unzipped_dirs, unlink, recursive = TRUE, force = TRUE)
-      message("Deleted unzipped directories.")
+      sapply(unzipped_dirs, unlink, recursive = TRUE)
     }
 
-    gc()  # Garbage collection
-    message("Workspace cleaned.")
+    gc()
+    message("Single dataset workspace cleaned.")
   }
-
 
   # Fonction réactive pour récupérer les clusters depuis l'objet Seurat
   get_clusters <- reactive({
@@ -239,7 +237,7 @@ single_dataset_server <- function(input, output, session) {
     updateCheckboxGroupInput(session, "ident_2", choices = cluster_choices, selected = "")
     updateSelectInput(session, "cluster_order_vln", choices = cluster_choices)
     updateSelectInput(session, "cluster_order_dot", choices = cluster_choices)
-    
+
 
     # Update gene-related inputs
     gene_list <- sort(rownames(LayerData(single_dataset_object(), assay = "RNA", layer = 'counts')))
@@ -952,11 +950,28 @@ single_dataset_server <- function(input, output, session) {
 
 
   ############################## Visualization of expressed genes ##############################
-  # Observer pour mettre à jour les choix de gènes selon l'assay sélectionné 
+  
+  
+  
+  observe({
+    req(single_dataset_object())
+    
+    # Utiliser names() sur le slot assays pour obtenir les noms des assays
+    available_assays <- names(single_dataset_object()@assays)
+    
+    # Message de debug
+    print(paste("Available assays:", paste(available_assays, collapse = ", ")))
+    
+    updateSelectInput(session, "viz_assay",
+                      choices = available_assays,
+                      selected = if("RNA" %in% available_assays) "RNA" else available_assays[1])
+  })
+  
+  # Observer pour mettre à jour les choix de gènes selon l'assay sélectionné
   observeEvent(c(single_dataset_object(), input$viz_assay), {
     req(single_dataset_object(), input$viz_assay)
-    gene_list <- sort(rownames(LayerData(single_dataset_object(), 
-                                         assay = input$viz_assay, 
+    gene_list <- sort(rownames(LayerData(single_dataset_object(),
+                                         assay = input$viz_assay,
                                          layer = 'counts')))
     updatePickerInput(session, "gene_select", choices = gene_list)
     updatePickerInput(session, "gene_select_heatmap", choices = gene_list)
@@ -1001,47 +1016,64 @@ single_dataset_server <- function(input, output, session) {
       genes <- unique(trimws(unlist(strsplit(input$gene_list_feature, ","))))
       seurat_object <- single_dataset_object()
       req(seurat_object)
-      DefaultAssay(seurat_object) <-input$viz_assay
+      DefaultAssay(seurat_object) <- input$viz_assay
       present_genes <- genes[genes %in% rownames(LayerData(seurat_object, assay = "RNA", layer = "counts"))]
       
       if (length(present_genes) > 0) {
-        print("Création du plot")
+        print("Creating plot")
         
-        # Préparer les paramètres de seuils
         min_cut <- if (!is.na(input$min_cutoff)) input$min_cutoff else NA
         max_cut <- if (!is.na(input$max_cutoff)) input$max_cutoff else NA
         
         if (input$show_coexpression && length(present_genes) > 1) {
-          print("Mode coexpression activé")
+          print("Coexpression mode activated")
           plot <- FeaturePlot(
             seurat_object,
             features = present_genes,
             blend = TRUE,
             blend.threshold = 1,
             order = TRUE,
-            min.cutoff = min_cut,  # Ajout du seuil minimum
-            max.cutoff = max_cut   # Ajout du seuil maximum
-          )
+            min.cutoff = min_cut,
+            max.cutoff = max_cut
+          ) +
+            theme(
+              axis.text = element_text(size = input$axis_text_size),
+              axis.title = element_text(size = input$title_text_size),
+              plot.title = element_text(size = input$title_text_size),
+              legend.text = element_text(size = input$axis_text_size),
+              axis.line = element_line(linewidth = input$axis_line_width),
+              axis.ticks = element_line(linewidth = input$axis_line_width)
+            )
         } else {
-          print("Mode standard")
+          print("Standard mode")
           plot <- FeaturePlot(
             seurat_object,
             features = present_genes,
-            min.cutoff = min_cut,  # Ajout du seuil minimum
-            max.cutoff = max_cut   # Ajout du seuil maximum
-          )
+            blend = TRUE,
+            blend.threshold = 1,
+            order = TRUE,
+            min.cutoff = min_cut,
+            max.cutoff = max_cut
+          ) +
+            theme(
+              axis.text = element_text(size = input$axis_text_size),
+              axis.title = element_text(size = input$title_text_size),
+              plot.title = element_text(size = input$title_text_size),
+              legend.text = element_text(size = input$axis_text_size),
+              axis.line = element_line(linewidth = input$axis_line_width),
+              axis.ticks = element_line(linewidth = input$axis_line_width)
+            )
         }
         
         if (input$add_noaxes_feature) {
-          print("Ajout NoAxes")
+          print("Adding NoAxes")
           plot <- plot + NoAxes()
         }
         if (input$add_nolegend_feature) {
-          print("Ajout NoLegend")
+          print("Adding NoLegend")
           plot <- plot + NoLegend()
         }
         
-        print(paste("Seuils appliqués - Min:", min_cut, "Max:", max_cut))
         feature_plot(plot)
       }
     }, error = function(e) {
@@ -1049,7 +1081,7 @@ single_dataset_server <- function(input, output, session) {
       print(paste("Error details:", e$message))
     })
   })
-
+  
   output$feature_plot <- renderPlot({
     req(feature_plot())
     feature_plot()
@@ -1066,37 +1098,74 @@ single_dataset_server <- function(input, output, session) {
 
   # VlnPlot
   vln_plot <- reactiveVal()
+
   
   observeEvent(input$show_vln, {
     tryCatch({
       req(input$gene_list_vln)
       print("Starting VlnPlot generation")
       
+      genes <- unique(trimws(unlist(strsplit(input$gene_list_vln, ","))))
+      print(paste("Processing genes:", paste(genes, collapse = ", ")))
+      
       seurat_object <- single_dataset_object()
       req(seurat_object)
-      print("Got Seurat object")
-      
-      # Définir l'assay sélectionné
       DefaultAssay(seurat_object) <- input$viz_assay
-      print(paste("Using assay:", input$viz_assay))
       
-      plot <- VlnPlot(
-        object = seurat_object,
-        features = input$gene_list_vln,
-        group.by = "seurat_clusters",  # utilisé seurat_clusters qui marchait
-        pt.size = ifelse(input$hide_vln_points, 0, 1)
-      )
-      print("Plot created")
+      if (!is.null(input$cluster_order_vln) && length(input$cluster_order_vln) > 0) {
+        print(paste("Selected clusters:", paste(input$cluster_order_vln, collapse=", ")))
+        
+        seurat_subset <- seurat_object
+        Idents(seurat_subset) <- factor(
+          Idents(seurat_subset),
+          levels = input$cluster_order_vln
+        )
+        seurat_subset <- subset(seurat_subset, idents = input$cluster_order_vln)
+        
+        plot <- VlnPlot(
+          object = seurat_subset,
+          features = genes,
+          pt.size = ifelse(input$hide_vln_points, 0, 1)
+        ) +
+          theme(
+            axis.text = element_text(size = input$axis_text_size),
+            axis.title = element_text(size = input$title_text_size),
+            plot.title = element_text(size = input$title_text_size),
+            legend.text = element_text(size = input$axis_text_size),
+            axis.line = element_line(linewidth = input$axis_line_width),
+            axis.ticks = element_line(linewidth = input$axis_line_width)
+          )
+        
+      } else {
+        plot <- VlnPlot(
+          object = seurat_subset,
+          features = genes,
+          pt.size = ifelse(input$hide_vln_points, 0, 1)
+        ) +
+          theme(
+            axis.text = element_text(size = input$axis_text_size),
+            axis.title = element_text(size = input$title_text_size),
+            plot.title = element_text(size = input$title_text_size),
+            legend.text = element_text(size = input$axis_text_size),
+            axis.line = element_line(linewidth = input$axis_line_width),
+            axis.ticks = element_line(linewidth = input$axis_line_width)
+          )
+      }
       
-      # Ajouter les options
-      if(input$add_noaxes_vln) plot <- plot + NoAxes()
-      if(input$add_nolegend_vln) plot <- plot + NoLegend()
+      if (!is.null(input$add_noaxes_vln) && input$add_noaxes_vln) {
+        plot <- plot + NoAxes()
+      }
+      if (!is.null(input$add_nolegend_vln) && input$add_nolegend_vln) {
+        plot <- plot + NoLegend()
+      }
       
       vln_plot(plot)
-      print("Plot stored")
+      print("Plot successfully stored")
       
     }, error = function(e) {
-      print(paste("Basic error:", e$message))
+      print(paste("Error in VlnPlot:", e$message))
+      print("Error details:")
+      print(e)
     })
   })
   
@@ -1104,7 +1173,7 @@ single_dataset_server <- function(input, output, session) {
     req(vln_plot())
     vln_plot()
   })
-  
+
 
   output$downloadVlnPlot <- downloadHandler(
     filename = function() {
@@ -1128,45 +1197,52 @@ single_dataset_server <- function(input, output, session) {
       seurat_object <- single_dataset_object()
       req(seurat_object)
       DefaultAssay(seurat_object) <- input$viz_assay
-
-      # Gestion des clusters sélectionnés
+      
       if (!is.null(input$cluster_order_dot) && length(input$cluster_order_dot) > 0) {
-        print(paste("Clusters sélectionnés:", paste(input$cluster_order_dot, collapse=", ")))
-
-        # Créer une copie pour ne pas modifier l'objet original
+        print(paste("Selected clusters:", paste(input$cluster_order_dot, collapse=", ")))
+        
         seurat_subset <- seurat_object
-
-        # Redéfinir les identifiants avec le nouvel ordre
         Idents(seurat_subset) <- factor(
           Idents(seurat_subset),
           levels = input$cluster_order_dot
         )
-
-        # Subset uniquement sur les clusters sélectionnés
         seurat_subset <- subset(seurat_subset, idents = input$cluster_order_dot)
-
-        # Utiliser l'objet subset pour le plot
+        
         plot <- DotPlot(
           seurat_subset,
           features = genes
-        ) + RotatedAxis()
+        ) + 
+          RotatedAxis() +
+          theme(
+            axis.text = element_text(size = input$axis_text_size),
+            axis.text.x = element_text(angle = 45, hjust = 1),
+            axis.title = element_text(size = input$title_text_size),
+            plot.title = element_text(size = input$title_text_size),
+            legend.text = element_text(size = input$axis_text_size),
+            axis.line = element_line(linewidth = input$axis_line_width),
+            axis.ticks = element_line(linewidth = input$axis_line_width)
+          )
       } else {
-        # Si aucun cluster n'est sélectionné, utiliser tous les clusters
         plot <- DotPlot(
-          seurat_object,
+          seurat_subset,
           features = genes
-        ) + RotatedAxis()
+        ) + 
+          RotatedAxis() +
+          theme(
+            axis.text = element_text(size = input$axis_text_size),
+            axis.text.x = element_text(angle = 45, hjust = 1),
+            axis.title = element_text(size = input$title_text_size),
+            plot.title = element_text(size = input$title_text_size),
+            legend.text = element_text(size = input$axis_text_size),
+            axis.line = element_line(linewidth = input$axis_line_width),
+            axis.ticks = element_line(linewidth = input$axis_line_width)
+          )
       }
-
-      # Options de base
+      
       if (input$add_noaxes_dot) plot <- plot + NoAxes()
       if (input$add_nolegend_dot) plot <- plot + NoLegend()
-
-      # Inversion des axes si demandé
-      if (input$invert_axes) {
-        plot <- plot + coord_flip()
-      }
-
+      if (input$invert_axes) plot <- plot + coord_flip()
+      
       dot_plot(plot)
     }, error = function(e) {
       showNotification(paste("Error in DotPlot: ", e$message), type = "error")
@@ -1186,7 +1262,7 @@ single_dataset_server <- function(input, output, session) {
                       "cluster_order_vln",  # Pour le VlnPlot
                       choices = cluster_choices,
                       selected = cluster_choices)
-    
+
     updateSelectInput(session,
                       "cluster_order_dot",  # Pour le DotPlot
                       choices = cluster_choices,
@@ -1221,11 +1297,18 @@ single_dataset_server <- function(input, output, session) {
       req(seurat_object)
       DefaultAssay(seurat_object) <- input$viz_assay
 
-      # Plot de base
       plot <- RidgePlot(
         seurat_object,
         features = genes
-      )
+      ) +
+        theme(
+          axis.text = element_text(size = input$axis_text_size),
+          axis.title = element_text(size = input$title_text_size),
+          plot.title = element_text(size = input$title_text_size),
+          legend.text = element_text(size = input$axis_text_size),
+          axis.line = element_line(linewidth = input$axis_line_width),
+          axis.ticks = element_line(linewidth = input$axis_line_width)
+        )
 
       # Options de base uniquement
       if (input$add_noaxes_ridge) plot <- plot + NoAxes()
@@ -1257,13 +1340,13 @@ single_dataset_server <- function(input, output, session) {
     tryCatch({
       req(input$gene_select_genes_analysis, single_dataset_object())
       seurat_obj <- single_dataset_object()
-      
+
       # Utiliser l'assay sélectionné
       DefaultAssay(seurat_obj) <- input$viz_assay
       # Récupérer les données d'expression des gènes dans l'assay sélectionné
       gene_data <- GetAssayData(seurat_obj, assay = input$viz_assay, slot = "counts")
       print(paste("Using assay:", input$viz_assay))
-      
+
       available_genes <- rownames(gene_data)
       # Le reste du code reste identique...
       selected_genes <- intersect(input$gene_select_genes_analysis, available_genes)
