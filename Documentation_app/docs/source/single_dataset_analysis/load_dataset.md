@@ -19,29 +19,6 @@ Required files (compressed in a single `.zip`):
 * Format: `.rds` file
 * Requirements: Must be a valid Seurat object (version 4 or higher)
 
-## Interface Boxes
-
-### Box: "Dataset Parameters"
-**Species Selection:**
-- Choose between "Mouse", "Human", or "Rat"
-- This affects gene name formatting and mitochondrial gene detection
-
-**Dataset Type:**
-- **snRNA-seq**: For single-nucleus RNA sequencing data
-- **Multiome**: For multi-modal data including RNA-seq
-
-### Box: "Load Dataset"
-**Left Column - Load Raw 10X Data:**
-- Click "Choose File" to select your data
-- Accepted formats: `.zip` or `.h5` files
-- For ZIP: Must contain the three 10X files at root level
-- For H5: Single file with complete dataset
-
-**Right Column - Load Processed Data:**
-- Click "Choose File" to select your `.rds` file
-- Upload a pre-processed Seurat object
-- Allows resuming analysis from saved state
-
 ## Step-by-Step Process
 
 1. **Select Species**: Choose your organism from the dropdown
