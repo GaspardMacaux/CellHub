@@ -26,6 +26,7 @@ myst_enable_extensions = [
     "replacements",    # Pour les remplacements typographiques courants
     "linkify",         # Pour transformer les URLs en liens
     "substitution"     # Pour les substitutions
+    "admonition"  
 ]
 
 intersphinx_mapping = {
