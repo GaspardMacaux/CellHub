@@ -57,8 +57,6 @@ Our streamlined workflow guides you through each step of single-cell analysis:
 * Seurat: Hao et al., Nature Biotechnology (2024)
 * Cellchat: Jin et al., Nature Protocols (2025)
 * Monocle: Cao et al., Nature (2019)
-* NicheNet: Browaeys et al., Nature Methods (2020)
-* MultiNicheNet: Browaeys et al., bioRxiv (2023)
 
 ### Online Resources
 
