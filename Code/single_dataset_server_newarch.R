@@ -6,226 +6,105 @@ single_dataset_server <- function(input, output, session) {
 
   ############################## Loading Data ##############################
   # Tab 1 : Loading Data
-
+  
   shinyjs::useShinyjs() # button deactivation
-
+  
   # Reactives objects for the single dataset part
   single_dataset_object <- reactiveVal(NULL)
   gene_list <- reactiveValues(features = NULL)
-
-  # Function to clean the workspace
-  cleanWorkspaceSingleDataset <- function() {
-    message("Cleaning single dataset workspace...")
-
-    # Nettoie uniquement les objets réactifs du single dataset
-    single_dataset_object(NULL)
-    gene_list$features <- NULL
-    subset_seurat(NULL)
-    clustering_plot(NULL)
-    feature_plot(NULL)
-    vln_plot(NULL)
-    dot_plot(NULL)
-    ridge_plot(NULL)
-    heatmap_plot(NULL)
-    scatter_plot(NULL)
-
-    # Crée et utilise un dossier temporaire spécifique pour single dataset
-    temp_dir <- file.path(tempdir(), "single_dataset")
-    dir.create(temp_dir, showWarnings = FALSE, recursive = TRUE)
-
-    # Nettoie uniquement les dossiers liés au single dataset
-    if (dir.exists(file.path(temp_dir, "tempdir"))) {
-      unlink(file.path(temp_dir, "tempdir"), recursive = TRUE)
-    }
-    if (dir.exists(file.path(temp_dir, "dataDir"))) {
-      unlink(file.path(temp_dir, "dataDir"), recursive = TRUE)
-    }
-
-    # Nettoie les dossiers unzipped spécifiques au single dataset
-    unzipped_dirs <- list.files(temp_dir, pattern = "^unzipped", full.names = TRUE)
-    if (length(unzipped_dirs) > 0) {
-      sapply(unzipped_dirs, unlink, recursive = TRUE)
-    }
-
-    gc()
-    message("Single dataset workspace cleaned.")
-  }
-
-  # Fonction réactive pour récupérer les clusters depuis l'objet Seurat
-  get_clusters <- reactive({
-    req(single_dataset_object())  # Assure que l'objet Seurat est disponible
-    return(levels(Idents(single_dataset_object())))  # Retourne les clusters
-  })
-
-
-
-  # Function to unzip and analyze contents with handling nested ZIP files
-  extract_and_process_zip <- function(zip_path, exdir) {
-    message(paste("Extracting zip file:", zip_path, "to", exdir))
-    unzip(zip_path, exdir = exdir)
-
-    # Look for nested zip files
-    nested_zips <- list.files(exdir, pattern = "\\.zip$", recursive = TRUE, full.names = TRUE)
-    while (length(nested_zips) > 0) {
-      for (nested_zip in nested_zips) {
-        message(paste("Extracting nested zip file:", nested_zip))
-        unzip(nested_zip, exdir = exdir)
-        unlink(nested_zip)
-      }
-      nested_zips <- list.files(exdir, pattern = "\\.zip$", recursive = TRUE, full.names = TRUE)
-    }
-
-    # Decompress .gz files if necessary
-    gz_files <- list.files(exdir, pattern = "\\.gz$", recursive = TRUE, full.names = TRUE)
-    if (length(gz_files) > 0) {
-      lapply(gz_files, function(file) {
-        tryCatch({
-          message(paste("Decompressing file:", file))
-          gunzip(file, overwrite = TRUE)
-        }, error = function(e) {
-          message(paste("Error decompressing file:", file, "->", e$message))
-        })
-      })
-    }
-
-    return(exdir)
-  }
-
-  # Function to compress uncompressed files
-  compress_files <- function(files) {
-    gz_files <- sapply(files, function(file) {
-      gz_file <- paste0(file, ".gz")
-      if (!file.exists(gz_file)) {
-        message(paste("Compressing file:", file))
-        R.utils::gzip(file, destname = gz_file, overwrite = TRUE)
-        message(paste("Compressed", file, "to", gz_file))
-      } else {
-        message(gz_file, "already exists.")
-      }
-      return(gz_file)
-    })
-    return(gz_files)
-  }
-
-  # Function to process the dataset after loading
-  processDataset <- function(dataDir, dataset_type, mt_pattern) {
-    cleanWorkspaceSingleDataset()
-    tryCatch({
-      message("Processing dataset...")
-
-      # List of files after extraction
-      all_files <- list.files(dataDir, recursive = TRUE, full.names = TRUE)
-      message("Files found in data directory:", paste(all_files, collapse = ", "))
-
-      # Check for required files
-      compressed_files <- grep("\\.gz$", all_files, value = TRUE)
-      uncompressed_files <- grep("matrix.mtx$|features.tsv$|barcodes.tsv$", all_files, value = TRUE)
-
-      if (length(compressed_files) == 3) {
-        message("Using compressed files.")
-        file_paths <- compressed_files
-      } else if (length(uncompressed_files) == 3) {
-        message("Found uncompressed files. Compressing...")
-        file_paths <- compress_files(uncompressed_files)
-      } else {
-        stop("Necessary 10X files (matrix.mtx, features.tsv, barcodes.tsv) are not found in the specified directory.")
-      }
-
-      dataDir <- dirname(file_paths[1])
-      message("Using data directory:", dataDir)
-
-      if (dataset_type == "snRNA") {
-        single_dataset_data <- Read10X(dataDir)
-        if (is.null(single_dataset_data)) {
-          stop("Unable to load 10X data. Please check the file format.")
-        }
-        seuratObj <- CreateSeuratObject(counts = single_dataset_data, project = "single_dataset", min.cells = 3, min.features = 200)
-        seuratObj[["percent.mt"]] <- PercentageFeatureSet(seuratObj, pattern = mt_pattern)
-        single_dataset_object(seuratObj)
-        showNotification("snRNA-seq data processed successfully.", type = "message")
-      } else if (dataset_type == "multiome") {
-        rna.data <- Read10X(dataDir)$`Gene Expression`
-        atac.data <- Read10X(dataDir)$`Peaks`
-        if (is.null(rna.data) || is.null(atac.data)) {
-          stop("Unable to load Multiome data. Please check the file format.")
-        }
-        rna.seurat <- CreateSeuratObject(counts = rna.data, project = "RNA", min.cells = 3, min.features = 200)
-        atac.seurat <- CreateSeuratObject(counts = atac.data, project = "ATAC", min.cells = 3, min.features = 200)
-        rna.seurat[["percent.mt"]] <- PercentageFeatureSet(rna.seurat, pattern = mt_pattern)
-        single_dataset_object(rna.seurat)
-        showNotification("Multiome data processed successfully.", type = "message")
-      }
-      updateUIElements()
-    }, error = function(e) {
-      showNotification(paste("Error processing data: ", e$message), type = "error")
-      message("Error during dataset processing:", e$message)
-    })
-  }
-
+  
   # Observer pour le chargement de données
   observeEvent(input$file, {
-    cleanWorkspaceSingleDataset()
-
     showNotification("Uploading and processing data...", type = "message")
-    mt_pattern <- ifelse(input$species_choice == "mouse", "^mt-", "^MT-")
-
+    
     tryCatch({
-      file_extension <- tools::file_ext(input$file$name)
-      message("File extension detected:", file_extension)
-
-      if (file_extension == "zip") {
-        dataDir <- tempdir()
-        extract_and_process_zip(input$file$datapath, exdir = dataDir)
-      } else {
-        stop("Please upload a .zip file.")
+      # Get file extension
+      file_extension <- tolower(tools::file_ext(input$file$name))
+      message("File extension detected: ", file_extension)
+      
+      # Validate file type
+      if (!file_extension %in% c("zip", "h5", "hdf5")) {
+        stop("Please upload a .zip or .h5/.hdf5 file.")
       }
-
-      # Verify file integrity after extraction
-      required_files <- c("matrix.mtx", "features.tsv", "barcodes.tsv")
-      files_found <- list.files(dataDir, recursive = TRUE, full.names = TRUE)
-
-      if (!all(required_files %in% basename(files_found))) {
-        stop("Necessary 10X files (matrix.mtx, features.tsv, barcodes.tsv) are not found in the specified directory.")
-      }
-
-      processDataset(dataDir, input$dataset_type, mt_pattern)
-
-      # Call to update the UI elements after the data is loaded
+      
+      # Clean workspace before loading
+      cleanWorkspace("single")
+      
+      # Load raw data using our general function
+      seuratObj <- loadRawData(
+        file_path = input$file$datapath,
+        dataset_type = input$dataset_type,
+        species = input$species_choice
+      )
+      
+      # Get dataset name
+      dataset_name <- getDatasetFileName(
+        list(input$file),
+        "SingleDataset"
+      )
+      
+      # Update project name
+      seuratObj@project.name <- dataset_name
+      
+      # Store Seurat object
+      single_dataset_object(seuratObj)
+      
+      # Success notification
+      showNotification(
+        paste0("Data loaded successfully! Cells: ", ncol(seuratObj), 
+               ", Genes: ", nrow(seuratObj)), 
+        type = "message"
+      )
+      
+      # Update UI elements
       updateUIElements()
-
+      
     }, error = function(e) {
-      showNotification(paste("Error processing files: ", e$message), type = "error")
-      message("Error during file processing:", e$message)
+      showNotification(paste("Error processing files:", e$message), type = "error")
+      message("Error during file processing: ", e$message)
     })
   })
-
-
-
-  # Charger et restaurer les couleurs après chargement de l'objet Seurat
+  
+  # Load and restore colors after loading Seurat object for single dataset
   observeEvent(input$load_seurat_file, {
-    cleanWorkspaceSingleDataset()
-    message("Attempting to read file at: ", input$load_seurat_file$datapath)
     tryCatch({
-      loaded_seurat <- readRDS(input$load_seurat_file$datapath)
-      message("File successfully read.")
+      loaded_seurat <- loadSeuratObject(
+        rds_path = input$load_seurat_file$datapath,
+        clean_before = TRUE,
+        module_type = "single"
+      )
+      
       single_dataset_object(loaded_seurat)
-
-      # Si des couleurs de clusters sont présentes, les restaurer
-      if (!is.null(loaded_seurat@misc$cluster_colors)) {
-        message("Restoring cluster colors from Seurat object.")
-        print(loaded_seurat@misc$cluster_colors)
-      } else {
-        message("No cluster colors found in Seurat object. Applying default colors.")
+      
+      # Generate plot if UMAP exists
+      plot_result <- generateInitialPlot(
+        seurat_obj = loaded_seurat,
+        remove_axes = input$remove_axes %||% FALSE,
+        remove_legend = input$remove_legend %||% FALSE
+      )
+      
+      if (!is.null(plot_result)) {
+        single_dataset_object(plot_result$seurat_obj)  # Update with colors
+        clustering_plot(plot_result$plot)
       }
-
-      showNotification("The Seurat object has been successfully loaded!")
+      
+      showNotification("Seurat object loaded successfully!")
       updateUIElements()
-
+      
     }, error = function(e) {
-      showNotification(paste("An error occurred: ", e), type = "error")
-      message("An error occurred: ", e)
+      showNotification(paste("Error:", e$message), type = "error")
     })
   })
+  
+  # Fonction réactive pour récupérer les clusters depuis l'objet Seurat
+  get_clusters <- reactive({
+    req(single_dataset_object())
+    return(getClusters(single_dataset_object()))
+  })
+
+
+
+ 
 
   # Function to update UI elements after data loading or dataset changes
   updateUIElements <- function() {
@@ -321,6 +200,48 @@ single_dataset_server <- function(input, output, session) {
     })
   })
 
+  # Observer pour la normalisation
+  observeEvent(input$normalize_data, {
+    req(single_dataset_object())
+    
+    showModal(modalDialog(
+      title = "Traitement",
+      "Normalisation des données et identification des caractéristiques variables...",
+      footer = NULL,
+      easyClose = FALSE
+    ))
+    
+    tryCatch({
+      # Récupérer l'objet Seurat
+      seurat_obj <- single_dataset_object()
+      
+      # Définir l'assay actif sur RNA et normaliser
+      message("Définition de l'assay par défaut sur RNA")
+      DefaultAssay(seurat_obj) <- "RNA"
+      
+      seurat_obj <- normalizeData(seurat_obj)
+      
+      # Mettre à jour l'objet Seurat
+      single_dataset_object(seurat_obj)
+      
+      # Afficher les caractéristiques variables
+      output$variable_feature_plot <- renderPlot({
+        plot1 <- VariableFeaturePlot(seurat_obj)
+        LabelPoints(plot = plot1, points = head(VariableFeatures(seurat_obj), 10), repel = TRUE)
+      })
+      
+      removeModal()
+      showNotification("Données normalisées avec succès", type = "message")
+      
+    }, error = function(e) {
+      removeModal()
+      showNotification(paste("Erreur pendant la normalisation:", e$message), type = "error")
+      message(paste("Erreur détaillée:", e$message))
+    })
+  })
+  
+
+  
   # Display QC metrics on a VlnPlot chart with verification
   output$vlnplot <- renderPlot({
     req(input$QCmetrics, single_dataset_object())
@@ -642,22 +563,24 @@ single_dataset_server <- function(input, output, session) {
     clustering_plot()
   })
 
-
-  output$downloadUMAP <- downloadHandler(
-    filename = function() {
-      paste("UMAP_plot", Sys.Date(), ".tiff", sep = "")
-    },
-    content = function(file) {
-      tryCatch({
-        req(clustering_plot())
-        ggsave(file, plot = clustering_plot(), dpi = input$dpi_umap, width = 10, height = 6)
-      }, error = function(e) {
-        showNotification(paste0("Download error: ", e$message), type = "error")
-      })
-    }
+  #SAVING UMAP PLOT
+  output$downloadUMAP <- createDownloadHandler(
+    reactive_data = clustering_plot,
+    object_name_reactive = reactive({ 
+      getObjectNameForDownload(single_dataset_object(), default_name = "UMAP_plot")
+    }),
+    data_name = "UMAP",
+    download_type = "plot",
+    plot_params = list(
+      file_type = reactive({ input$umap_export_format }),
+      width = reactive({ ifelse(input$umap_export_format == "pdf", 11, 10) }),
+      height = reactive({ ifelse(input$umap_export_format == "pdf", 8, 6) }),
+      dpi = reactive({ input$dpi_umap })
+    )
   )
-
-
+  
+######################Doublet Finder#########################
+  
   observeEvent(input$run_doubletfinder, {
     req(single_dataset_object())
 
@@ -764,251 +687,46 @@ single_dataset_server <- function(input, output, session) {
     })
   })
 
-  ############################## Calculate differential expressed genes for each cluster ##############################
-
-  # Variables réactives pour cet onglet
-  gene_tables <- reactiveValues()
-  all_markers <- reactiveVal()
-
-  # Function to calculate all differential markers once only
-  clean_gene_names_for_html <- function(gene_names) {
-    tryCatch({
-      # Obtenir les noms de gènes originaux depuis les rownames
-      original_names <- rownames(single_dataset_object())
-
-      # Ne supprimer les suffixes que si le nom de gène existe sans suffixe
-      cleaned_names <- sapply(gene_names, function(gene) {
-        base_name <- gsub("\\.\\d+$", "", gene)  # Supprime le .X à la fin
-        if (base_name %in% original_names) {
-          return(base_name)
-        }
-        return(gene)  # Garde le suffixe si nécessaire
-      })
-
-      return(cleaned_names)
-    }, error = function(e) {
-      showNotification(paste("Error cleaning gene names:", e$message), type = "error")
-      return(gene_names)  # Retourne les noms non modifiés en cas d'erreur
-    })
-  }
-
-  # Fonction modifiée pour calculer tous les marqueurs différentiels une seule fois
-  calculate_all_markers <- function() {
-    if (is.null(single_dataset_object())) {
-      showNotification("single_dataset_object is NULL, please check the previous steps.", type = "error")
-      return(NULL)
-    }
-    tryCatch({
-      showNotification("Calculation of differential markers in progress...", type = "message", duration = 10)
-      markers <- FindAllMarkers(single_dataset_object(),
-                                min.pct = input$min_pct_all_single,
-                                logfc.threshold = input$logfc_threshold_all_single)
-
-      # Examiner tous les gènes avec suffixes numériques
-      all_genes <- rownames(GetAssayData(single_dataset_object()))
-      genes_with_suffix <- grep("\\.\\d+$", all_genes, value=TRUE)
-
-      # Afficher des détails
-      print("Exemples de gènes avec suffixes:")
-      print(head(sort(genes_with_suffix), 20))
-
-      print("Nombre total de gènes avec suffixes:")
-      print(length(genes_with_suffix))
-
-      print("Distribution des suffixes:")
-      suffixes <- as.numeric(gsub(".*\\.", "", genes_with_suffix))
-      print(table(suffixes))
-
-      print("Gènes avec plusieurs versions:")
-      base_genes <- gsub("\\.\\d+$", "", genes_with_suffix)
-      duplicated_genes <- unique(base_genes[duplicated(base_genes)])
-      for(gene in head(duplicated_genes)) {
-        print(paste("Gene:", gene))
-        print(grep(paste0("^", gene, "\\."), genes_with_suffix, value=TRUE))
-      }
-
-      print("Distribution of suffixes:")
-      suffixes <- gsub(".*\\.", "", grep("\\.\\d+$", rownames(GetAssayData(single_dataset_object())), value=TRUE))
-      print(table(suffixes))
-      markers <- as.data.frame(markers)
-      cleaned_gene_names <- clean_gene_names_for_html(rownames(markers))
-      markers$gene <- paste0('<span class="gene-name">', cleaned_gene_names, '</span>')
-      markers$p_val <- format(markers$p_val, scientific = TRUE, digits = 20)
-      markers$p_val_adj <- format(markers$p_val_adj, scientific = TRUE, digits =20)
-      markers$gene <- paste0('<a href="#" class="gene-name" data-gene="', cleaned_gene_names, '">', cleaned_gene_names, '</a>')
-      all_markers(markers)
-    }, error = function(e) {
-      showNotification(paste0("Error when calculating differential markers: ", e$message), type = "error")
-    })
-  }
-
-  # Function to update gene tables according to the number selected
-  update_gene_tables_display <- function() {
-    tryCatch({
-      markers <- all_markers()
-      num_genes_to_display <- input$number_genes
-      for (cluster in unique(markers$cluster)) {
-        gene_tables[[paste0("table_", cluster)]] <- head(markers[markers$cluster == cluster, ], n = num_genes_to_display)
-      }
-      output$diff_genes_tables <- renderUI({
-        tagList(
-          lapply(names(gene_tables), function(name) {
-            tags$div(style = "width: 100%; font-size: 75%;",
-                     tagList(
-                       h3(paste0("Cluster ", stringr::str_replace(name, "table_", ""))),
-                       DTOutput(name),
-                       hr()
-                     )
-            )
-          })
-        )
-      })
-    }, error = function(e) {
-      showNotification(paste0("Error when updating gene tables: ", e$message), type = "error")
-    })
-  }
-
-  # Observer for run_DE button to calculate all markers
-  observeEvent(input$run_DE, {
-    tryCatch({
-      # Afficher la boîte de dialogue modale
-      showModal(modalDialog(
-        title = "Please Wait",
-        "Calculating differential expression...",
-        easyClose = FALSE,
-        footer = NULL
-      ))
-
-      calculate_all_markers()
-      update_gene_tables_display()
-
-      # Fermer la boîte de dialogue modale
-      removeModal()
-    }, error = function(e) {
-      removeModal() # Fermer la boîte de dialogue modale en cas d'erreur
-      showNotification(paste0("Error calculating differential expression:", e$message), type = "error")
-    })
-  })
-
-  # Observer to update display only when gene number changes
-  observeEvent(input$number_genes, {
-    tryCatch({
-      if (!is.null(input$number_genes) && !is.null(all_markers())) {
-        update_gene_tables_display()
-      }
-    }, error = function(e) {
-      showNotification(paste0("Error:", e$message), type = "error")
-    })  })
-
-  #update the output genes table
-  observe({
-    lapply(names(gene_tables), function(name) {
-      output[[name]] <- renderDataTable({
-        datatable(gene_tables[[name]], escape = FALSE)
-      })
-    })
-  })
-
-
-
-  # Download seurat object
-  output$save_seurat <- downloadHandler(
-    tryCatch({
-
-      filename = function() {
-        showModal(modalDialog(
-          title = "Please Wait",
-          "Preparing the seurat object for download...",
-          footer = NULL,
-          easyClose = FALSE
-        ))
-        return("seurat_object.rds")
-      }}, error = function(e) {
-        showNotification(paste0("Error:", e$message), type = "error")
-      }),
-    content = function(file) {
-      saveRDS(single_dataset_object(), file)
-      removeModal()
-    }
-  )
-
-
-  # Download markers as a CSV
-  output$download_DE <- downloadHandler(
-    tryCatch({
-      filename = function() {
-        paste("DE_genes_", Sys.Date(), ".csv", sep = "")
-      }}, error = function(e) {
-        showNotification(paste0("Error:", e$message), type = "error")
-      }),
-    content = function(file) {
-      markers <- all_markers()
-      write.csv(markers, file)
-    }
-  )
-
-
-
   ############################## Visualization of expressed genes ##############################
-  
-  
-  
+
+
+  # Observer pour mettre à jour les choix d'assays
   observe({
     req(single_dataset_object())
-    
-    # Utiliser names() sur le slot assays pour obtenir les noms des assays
-    available_assays <- names(single_dataset_object()@assays)
-    
-    # Message de debug
-    print(paste("Available assays:", paste(available_assays, collapse = ", ")))
-    
-    updateSelectInput(session, "viz_assay",
-                      choices = available_assays,
-                      selected = if("RNA" %in% available_assays) "RNA" else available_assays[1])
+    updateAssayChoices(session, single_dataset_object())
   })
   
-  # Observer pour mettre à jour les choix de gènes selon l'assay sélectionné
+  # Observer pour mettre à jour les choix de gènes
   observeEvent(c(single_dataset_object(), input$viz_assay), {
     req(single_dataset_object(), input$viz_assay)
-    gene_list <- sort(rownames(LayerData(single_dataset_object(),
-                                         assay = input$viz_assay,
-                                         layer = 'counts')))
-    updatePickerInput(session, "gene_select", choices = gene_list)
-    updatePickerInput(session, "gene_select_heatmap", choices = gene_list)
-    updatePickerInput(session, "gene_select_genes_analysis", choices = gene_list)
+    updateGeneChoices(session, single_dataset_object(), input$viz_assay)
   })
-
-  # Observer pour mettre à jour les gènes sélectionnés
-  observeEvent(input$gene_select, {
-    selected_gene <- input$gene_select
-    update_genes <- function(existing_genes, new_gene) {
-      if (existing_genes == "") {
-        return(new_gene)
-      } else {
-        genes <- strsplit(existing_genes, ",")[[1]]
-        genes <- unique(c(trimws(genes), new_gene))
-        return(paste(genes, collapse = ", "))
-      }
-    }
-    updateTextInput(session, "gene_list_vln", value = update_genes(input$gene_list_vln, selected_gene))
-    updateTextInput(session, "gene_list_feature", value = update_genes(input$gene_list_feature, selected_gene))
-    updateTextInput(session, "gene_list_dotplot", value = update_genes(input$gene_list_dotplot, selected_gene))
-    updateTextInput(session, "gene_list_ridge_plot", value = update_genes(input$gene_list_ridge_plot, selected_gene))
-  })
-
-  # Mise à jour des sélecteurs de cluster
+  
+  # Observer pour mettre à jour les sélecteurs de cluster
   observe({
-    if (!is.null(single_dataset_object())) {
-      cluster_choices <- unique(Idents(single_dataset_object()))  # Utiliser Idents()
-      updateSelectInput(session, "select_cluster", choices = cluster_choices)
-      updateSelectInput(session, "ident_1", choices = cluster_choices)
-      updateCheckboxGroupInput(session, "ident_2", choices = cluster_choices, selected = "")
+    req(single_dataset_object())
+    updateClusterChoices(session, single_dataset_object())
+  })
+  
+  
+  # Observer to update text inputs when genes are selected in pickerInput
+  observeEvent(input$gene_select, {
+    selected_genes <- input$gene_select
+    
+    if (!is.null(selected_genes) && length(selected_genes) > 0) {
+      # Convert selected genes to comma-separated string
+      genes_text <- paste(selected_genes, collapse = ", ")
+      
+      # Update all gene text inputs with selected genes
+      updateTextInput(session, "gene_list_feature", value = genes_text)
+      updateTextInput(session, "gene_list_dotplot", value = genes_text)
+      updateTextInput(session, "gene_list_ridge_plot", value = genes_text)
+      updateTextInput(session, "gene_list_vln", value = genes_text)  # If you have this one too
     }
   })
-
+  
   # FeaturePlot avec options
   feature_plot <- reactiveVal()
-
 
   observeEvent(input$show_feature, {
     tryCatch({
@@ -1018,53 +736,34 @@ single_dataset_server <- function(input, output, session) {
       req(seurat_object)
       DefaultAssay(seurat_object) <- input$viz_assay
       present_genes <- genes[genes %in% rownames(LayerData(seurat_object, assay = "RNA", layer = "counts"))]
-      
+
       if (length(present_genes) > 0) {
         print("Creating plot")
-        
         min_cut <- if (!is.na(input$min_cutoff)) input$min_cutoff else NA
         max_cut <- if (!is.na(input$max_cutoff)) input$max_cutoff else NA
-        
-        if (input$show_coexpression && length(present_genes) > 1) {
-          print("Coexpression mode activated")
-          plot <- FeaturePlot(
-            seurat_object,
-            features = present_genes,
-            blend = TRUE,
-            blend.threshold = 1,
-            order = TRUE,
-            min.cutoff = min_cut,
-            max.cutoff = max_cut
-          ) +
-            theme(
-              axis.text = element_text(size = input$axis_text_size),
-              axis.title = element_text(size = input$title_text_size),
-              plot.title = element_text(size = input$title_text_size),
-              legend.text = element_text(size = input$axis_text_size),
-              axis.line = element_line(linewidth = input$axis_line_width),
-              axis.ticks = element_line(linewidth = input$axis_line_width)
-            )
-        } else {
-          print("Standard mode")
-          plot <- FeaturePlot(
-            seurat_object,
-            features = present_genes,
-            blend = TRUE,
-            blend.threshold = 1,
-            order = TRUE,
-            min.cutoff = min_cut,
-            max.cutoff = max_cut
-          ) +
-            theme(
-              axis.text = element_text(size = input$axis_text_size),
-              axis.title = element_text(size = input$title_text_size),
-              plot.title = element_text(size = input$title_text_size),
-              legend.text = element_text(size = input$axis_text_size),
-              axis.line = element_line(linewidth = input$axis_line_width),
-              axis.ticks = element_line(linewidth = input$axis_line_width)
-            )
-        }
-        
+
+        # Configuration de base du thème
+        base_theme <- theme(
+          axis.text = element_text(size = input$axis_text_size),
+          axis.title = element_text(size = input$title_text_size),
+          plot.title = element_text(size = input$title_text_size),
+          legend.text = element_text(size = input$axis_text_size),
+          axis.line = element_line(linewidth = input$axis_line_width),
+          axis.ticks = element_line(linewidth = input$axis_line_width)
+        )
+
+        # Créer le plot avec les paramètres appropriés
+        plot <- FeaturePlot(
+          seurat_object,
+          features = present_genes,
+          blend = input$show_coexpression && length(present_genes) > 1,
+          blend.threshold = 1,
+          order = TRUE,
+          min.cutoff = min_cut,
+          max.cutoff = max_cut
+        ) + base_theme
+
+        # Ajout des modifications conditionnelles
         if (input$add_noaxes_feature) {
           print("Adding NoAxes")
           plot <- plot + NoAxes()
@@ -1073,7 +772,7 @@ single_dataset_server <- function(input, output, session) {
           print("Adding NoLegend")
           plot <- plot + NoLegend()
         }
-        
+
         feature_plot(plot)
       }
     }, error = function(e) {
@@ -1081,47 +780,36 @@ single_dataset_server <- function(input, output, session) {
       print(paste("Error details:", e$message))
     })
   })
-  
+
   output$feature_plot <- renderPlot({
     req(feature_plot())
     feature_plot()
   })
 
-  output$downloadFeaturePlot <- downloadHandler(
-    filename = function() {
-      paste("FeaturePlot", Sys.Date(), ".tiff", sep = "")
-    },
-    content = function(file) {
-      ggsave(file, plot = feature_plot(), dpi = input$dpi_plot, width = 10, height = 8)
-    }
-  )
-
   # VlnPlot
   vln_plot <- reactiveVal()
-
-  
   observeEvent(input$show_vln, {
     tryCatch({
       req(input$gene_list_vln)
       print("Starting VlnPlot generation")
-      
+
       genes <- unique(trimws(unlist(strsplit(input$gene_list_vln, ","))))
       print(paste("Processing genes:", paste(genes, collapse = ", ")))
-      
+
       seurat_object <- single_dataset_object()
       req(seurat_object)
       DefaultAssay(seurat_object) <- input$viz_assay
-      
+
       if (!is.null(input$cluster_order_vln) && length(input$cluster_order_vln) > 0) {
         print(paste("Selected clusters:", paste(input$cluster_order_vln, collapse=", ")))
-        
+
         seurat_subset <- seurat_object
         Idents(seurat_subset) <- factor(
           Idents(seurat_subset),
           levels = input$cluster_order_vln
         )
         seurat_subset <- subset(seurat_subset, idents = input$cluster_order_vln)
-        
+
         plot <- VlnPlot(
           object = seurat_subset,
           features = genes,
@@ -1135,7 +823,7 @@ single_dataset_server <- function(input, output, session) {
             axis.line = element_line(linewidth = input$axis_line_width),
             axis.ticks = element_line(linewidth = input$axis_line_width)
           )
-        
+
       } else {
         plot <- VlnPlot(
           object = seurat_subset,
@@ -1151,44 +839,32 @@ single_dataset_server <- function(input, output, session) {
             axis.ticks = element_line(linewidth = input$axis_line_width)
           )
       }
-      
+
       if (!is.null(input$add_noaxes_vln) && input$add_noaxes_vln) {
         plot <- plot + NoAxes()
       }
       if (!is.null(input$add_nolegend_vln) && input$add_nolegend_vln) {
         plot <- plot + NoLegend()
       }
-      
+
       vln_plot(plot)
       print("Plot successfully stored")
-      
+
     }, error = function(e) {
       print(paste("Error in VlnPlot:", e$message))
       print("Error details:")
       print(e)
     })
   })
-  
+
   output$vln_plot <- renderPlot({
     req(vln_plot())
     vln_plot()
   })
 
 
-  output$downloadVlnPlot <- downloadHandler(
-    filename = function() {
-      paste("VlnPlot", Sys.Date(), ".tiff", sep = "")
-    },
-    content = function(file) {
-      ggsave(file, plot = vln_plot(), dpi = input$dpi_plot, width = 10, height = 8)
-    }
-  )
-
   # DotPlot reactive value
   dot_plot <- reactiveVal()
-
-
-
   # DotPlot avec gestion correcte des clusters
   observeEvent(input$show_dot, {
     tryCatch({
@@ -1197,21 +873,21 @@ single_dataset_server <- function(input, output, session) {
       seurat_object <- single_dataset_object()
       req(seurat_object)
       DefaultAssay(seurat_object) <- input$viz_assay
-      
+   
       if (!is.null(input$cluster_order_dot) && length(input$cluster_order_dot) > 0) {
         print(paste("Selected clusters:", paste(input$cluster_order_dot, collapse=", ")))
-        
+
         seurat_subset <- seurat_object
         Idents(seurat_subset) <- factor(
           Idents(seurat_subset),
           levels = input$cluster_order_dot
         )
         seurat_subset <- subset(seurat_subset, idents = input$cluster_order_dot)
-        
+
         plot <- DotPlot(
           seurat_subset,
           features = genes
-        ) + 
+        ) +
           RotatedAxis() +
           theme(
             axis.text = element_text(size = input$axis_text_size),
@@ -1226,7 +902,7 @@ single_dataset_server <- function(input, output, session) {
         plot <- DotPlot(
           seurat_subset,
           features = genes
-        ) + 
+        ) +
           RotatedAxis() +
           theme(
             axis.text = element_text(size = input$axis_text_size),
@@ -1238,11 +914,11 @@ single_dataset_server <- function(input, output, session) {
             axis.ticks = element_line(linewidth = input$axis_line_width)
           )
       }
-      
+
       if (input$add_noaxes_dot) plot <- plot + NoAxes()
       if (input$add_nolegend_dot) plot <- plot + NoLegend()
       if (input$invert_axes) plot <- plot + coord_flip()
-      
+
       dot_plot(plot)
     }, error = function(e) {
       showNotification(paste("Error in DotPlot: ", e$message), type = "error")
@@ -1273,18 +949,6 @@ single_dataset_server <- function(input, output, session) {
     req(dot_plot())
     dot_plot()
   })
-
-
-  # Téléchargement du DotPlot
-  output$downloadDotPlot <- downloadHandler(
-    filename = function() {
-      paste("DotPlot", Sys.Date(), ".tiff", sep = "")
-    },
-    content = function(file) {
-      ggsave(file, plot = dot_plot(), dpi = input$dpi_plot, width = 10, height = 8)
-    }
-  )
-
 
   # RidgePlot
   ridge_plot <- reactiveVal()
@@ -1325,119 +989,109 @@ single_dataset_server <- function(input, output, session) {
     ridge_plot()
   })
 
-  output$download_ridge_plot <- downloadHandler(
-    filename = function() {
-      paste("RidgePlot", Sys.Date(), ".tiff", sep = "")
-    },
-    content = function(file) {
-      ggsave(file, plot = ridge_plot(), dpi = input$dpi_plot, width = 10, height = 8)
-    }
+  # Download handler for RidgePlot
+  output$download_ridge_plot <- createDownloadHandler(
+    reactive_data = ridge_plot,
+    object_name_reactive = reactive({ 
+      getObjectNameForDownload(single_dataset_object(), default_name = "RidgePlot")
+    }),
+    data_name = "RidgePlot",
+    download_type = "plot",
+    plot_params = list(
+      file_type = input$plot_format,
+      width = 10,
+      height = 8,
+      dpi = input$dpi_plot
+    )
   )
-
+  
+  # Download handler for DotPlot
+  output$downloadDotPlot <- createDownloadHandler(
+    reactive_data = dot_plot,
+    object_name_reactive = reactive({ 
+      getObjectNameForDownload(single_dataset_object(), default_name = "DotPlot")
+    }),
+    data_name = "DotPlot",
+    download_type = "plot",
+    plot_params = list(
+      file_type = input$plot_format,
+      width = 10,
+      height = 8,
+      dpi = input$dpi_plot
+    )
+  )
+  
+  # Download handler for ViolinPlot
+  output$downloadVlnPlot <- createDownloadHandler(
+    reactive_data = vln_plot,
+    object_name_reactive = reactive({ 
+      getObjectNameForDownload(single_dataset_object(), default_name = "VlnPlot")
+    }),
+    data_name = "VlnPlot",
+    download_type = "plot",
+    plot_params = list(
+      file_type = input$plot_format,
+      width = 10,
+      height = 8,
+      dpi = input$dpi_plot
+    )
+  )
+  
+  # Download handler for FeaturePlot
+  output$downloadFeaturePlot <- createDownloadHandler(
+    reactive_data = feature_plot,
+    object_name_reactive = reactive({ 
+      getObjectNameForDownload(single_dataset_object(), default_name = "FeaturePlot")
+    }),
+    data_name = "FeaturePlot",
+    download_type = "plot",
+    plot_params = list(
+      file_type = input$plot_format,
+      width = 10,
+      height = 8,
+      dpi = input$dpi_plot
+    )
+  )
+  
   # Analyse de l'expression des gènes
   number_of_nuclei <- reactiveVal(NULL)
+
   observeEvent(input$analyze_btn, {
+    req(input$gene_select_genes_analysis, single_dataset_object())
+    
     tryCatch({
-      req(input$gene_select_genes_analysis, single_dataset_object())
-      seurat_obj <- single_dataset_object()
-
-      # Utiliser l'assay sélectionné
-      DefaultAssay(seurat_obj) <- input$viz_assay
-      # Récupérer les données d'expression des gènes dans l'assay sélectionné
-      gene_data <- GetAssayData(seurat_obj, assay = input$viz_assay, slot = "counts")
-      print(paste("Using assay:", input$viz_assay))
-
-      available_genes <- rownames(gene_data)
-      # Le reste du code reste identique...
-      selected_genes <- intersect(input$gene_select_genes_analysis, available_genes)
-      if (length(selected_genes) == 0) {
-        showNotification("No selected genes are present in the dataset.", type = "error")
-        return()
-      }
-
-      # Log pour les gènes sélectionnés
-      message("Selected genes: ", paste(selected_genes, collapse = ", "))
-
-      # Récupérer les identifiants des clusters pour chaque noyau
-      cluster_info <- FetchData(seurat_obj, vars = "ident")
-
-      # Log pour les informations des clusters
-      message("Cluster information: ", paste(unique(cluster_info$ident), collapse = ", "))
-
-      # Compter le nombre total de noyaux dans chaque cluster (tous les noyaux)
-      cluster_counts_total <- table(cluster_info$ident)
-
-      # Log pour le nombre total de noyaux dans chaque cluster
-      message("Total nuclei per cluster: ", paste(names(cluster_counts_total), "=", cluster_counts_total, collapse = ", "))
-
-      # Initialiser une liste pour stocker les résumés d'expression par gène
-      expression_summary_list <- lapply(selected_genes, function(gene) {
-        gene_data <- gene_data[gene, ]  # Extraire les données d'expression pour le gène
-
-        # Déterminer les noyaux exprimant le gène (expression > 0)
-        expressed_indices <- gene_data > 0
-
-        # Log pour vérifier combien de noyaux expriment ce gène
-        message("Nuclei expressing ", gene, ": ", sum(expressed_indices))
-
-        # Obtenir les clusters pour les noyaux exprimant le gène
-        clusters_expressing <- cluster_info[expressed_indices, "ident"]
-
-        # Compter le nombre de noyaux exprimant le gène par cluster
-        cluster_counts_expressed <- table(clusters_expressing)
-
-        # Log pour le nombre de noyaux exprimant le gène par cluster
-        message("Nuclei expressing ", gene, " per cluster: ", paste(names(cluster_counts_expressed), "=", cluster_counts_expressed, collapse = ", "))
-
-        # Créer un dataframe avec les résultats
-        df <- data.frame(
-          Gene = gene,
-          Cluster = names(cluster_counts_expressed),
-          Cells_Expressed = as.numeric(cluster_counts_expressed),  # Noyaux exprimant le gène
-          Total_Cells_in_Cluster = as.numeric(cluster_counts_total[names(cluster_counts_expressed)]),  # Nombre total de noyaux par cluster
-          Percentage_of_Cells = (as.numeric(cluster_counts_expressed) / as.numeric(cluster_counts_total[names(cluster_counts_expressed)])) * 100  # Pourcentage
-        )
-
-        return(df)
+      result <- analyze_gene_expression(
+        seurat_obj = single_dataset_object(),
+        selected_genes = input$gene_select_genes_analysis,
+        assay_name = input$viz_assay,
+        expression_threshold = input$expression_threshold %||% 0.1,
+        is_integrated = FALSE
+      )
+      
+      number_of_nuclei(result$data)
+      
+      output$expression_summary <- renderDT({
+        render_expression_table(result, "expression_summary")
       })
-
-      # Filtrer les résultats valides et afficher
-      valid_expression_summary <- Filter(Negate(is.null), expression_summary_list)
-      if (length(valid_expression_summary) > 0) {
-        expression_df <- do.call(rbind, valid_expression_summary)
-        number_of_nuclei(expression_df)
-      } else {
-        expression_df <- data.frame()
-        showNotification("No results meet the thresholds specified.", type = "warning")
-      }
-
-      # Afficher les résultats dans un tableau
-      output$expression_summary <- renderDataTable({
-        datatable(expression_df, options = list(pageLength = 10, scrollX = TRUE))
-      })
-
+      
     }, error = function(e) {
-      showNotification(paste("Error processing expression data: ", e$message), type = "error")
+      showNotification(paste("Error:", e$message), type = "error")
     })
   })
-
-
-
-
-  output$download_genes_number_expresion <- downloadHandler(
-    filename = function() {
-      paste("number_of_gene_expression", Sys.Date(), ".csv", sep = "")
-    },
-    content = function(file) {
-      req(number_of_nuclei())
-      write.csv(number_of_nuclei(), file, row.names = FALSE)
-    },
-    contentType = "text/csv"
-  )
+  
+  
+  # Rendre le plot actuel dans l'UI
+  output$selected_plot_display <- renderPlot({
+    req(current_plot())
+    current_plot()
+  })
 
   # Réactive pour stocker et mettre à jour le plot actuel basé sur la sélection de l'utilisateur
   current_plot <- reactiveVal()
-
+  
+  
+  
+  
   observe({
     # Mise à jour du plot actuel en fonction de la sélection
     plot_type <- input$plot_type_select
@@ -1451,13 +1105,26 @@ single_dataset_server <- function(input, output, session) {
       current_plot(ridge_plot())
     }
   })
-
-  # Rendre le plot actuel dans l'UI
-  output$selected_plot_display <- renderPlot({
-    req(current_plot())
-    current_plot()
-  })
-
+  
+  output$download_genes_number_expresion <- createDownloadHandler(
+    reactive_data = number_of_nuclei,
+    object_name_reactive = reactive({ 
+      getObjectNameForDownload(single_dataset_object(), default_name = "GeneExpression")
+    }),
+    data_name = "number_of_gene_expression",
+    download_type = "csv"
+  )
+  
+  # Download handler for Seurat object with modal
+  output$save_seurat_object_2 <- createDownloadHandler(
+    reactive_data = single_dataset_object,
+    object_name_reactive = reactive({ 
+      getObjectNameForDownload(single_dataset_object(), default_name = "SingleDataset")
+    }),
+    data_name = "seurat_object",
+    download_type = "seurat",
+    show_modal = TRUE  
+  )
 
   ############################## Heatmaps and scatter plots ##############################
 
@@ -1548,31 +1215,28 @@ single_dataset_server <- function(input, output, session) {
     heatmap_plot()
   })
 
-  output$download_heatmap_single <- downloadHandler(
-    filename = function() {
-      paste("heatmap-", Sys.Date(), ".tiff", sep="")
-    },
-    content = function(file) {
-      tryCatch({
-        req(heatmap_plot())
-        ggsave(file, plot = heatmap_plot(), dpi = input$dpi_heatmap_single, width = 10, height = 8)
-      }, error = function(e) {
-        error_message(paste("Error in Heatmap: ", e$message))
-      })
-    }
+  # Download handler for heatmap
+  output$download_heatmap_single <- createDownloadHandler(
+    reactive_data = heatmap_plot,
+    object_name_reactive = reactive({ 
+      getObjectNameForDownload(single_dataset_object(), default_name = "Heatmap")
+    }),
+    data_name = "heatmap",
+    download_type = "plot",
+    plot_params = list(
+      file_type = "tiff",
+      width = 10,
+      height = 8,
+      dpi = input$dpi_heatmap_single
+    )
   )
 
 
   # Mettez à jour les choix de selectInput pour les gènes/features et les clusters
   observe({
     req(single_dataset_object())
-    gene_list <- rownames(LayerData(single_dataset_object(), assay = "RNA", layer = 'counts'))
-    updatePickerInput(session, "feature1_select", choices = gene_list)
-    updatePickerInput(session, "feature2_select", choices = gene_list)
-
-    cluster_list <- levels(Idents(single_dataset_object()))
-    updateTextInput(session, "scatter_text_clusters", value = paste(cluster_list, collapse = ","))
-    updateTextInput(session, "text_clusters", value = paste(cluster_list, collapse = ","))
+    updateGeneChoices(session, single_dataset_object(), "RNA", c("feature1_select", "feature2_select"))
+    updateClusterTextInputs(session, single_dataset_object(), c("scatter_text_clusters", "text_clusters"))
   })
 
   scatter_plot <- reactiveVal()
@@ -1607,136 +1271,22 @@ single_dataset_server <- function(input, output, session) {
     scatter_plot()
   })
 
-  output$download_scatter_plot <- downloadHandler(
-    filename = function() {
-      paste0("FeatureScatter_", Sys.Date(), ".tiff")
-    },
-    content = function(file) {
-      tryCatch({
-        ggsave(file, plot = scatter_plot(), device = "tif", width = 10, height = 8, dpi = input$dpi_scatter)
-      }, error = function(e) {
-        showNotification(paste("Erreur lors du téléchargement :", e$message), type = "error")
-      })
-    }
+  # Download handler for scatter plot
+  output$download_scatter_plot <- createDownloadHandler(
+    reactive_data = scatter_plot,
+    object_name_reactive = reactive({ 
+      getObjectNameForDownload(single_dataset_object(), default_name = "FeatureScatter")
+    }),
+    data_name = "FeatureScatter",
+    download_type = "plot",
+    plot_params = list(
+      file_type = "tiff",
+      width = 10,
+      height = 8,
+      dpi = input$dpi_scatter
+    )
   )
 
-
-
-############################## Genes analysis ##############################
-
- number_of_nuclei <- reactiveVal(NULL)
-  # Ajuster le seuil d'expression
-  observeEvent(input$analyze_btn, {
-    tryCatch({
-      req(input$gene_select_genes_analysis, single_dataset_object(), input$expression_threshold)  # Ajouter le seuil d'expression
-
-      seurat_obj <- single_dataset_object()
-
-      # Assurez-vous que l'assay "RNA" est bien utilisé
-      DefaultAssay(seurat_obj) <- "RNA"
-
-      # Récupérer les données d'expression des gènes dans l'assay "RNA"
-      gene_data <- GetAssayData(seurat_obj, assay = "RNA", slot = "counts")
-      available_genes <- rownames(gene_data)
-
-      # Sélectionner les gènes présents dans le jeu de données
-      selected_genes <- intersect(input$gene_select_genes_analysis, available_genes)
-      if (length(selected_genes) == 0) {
-        showNotification("No selected genes are present in the dataset.", type = "error")
-        return()
-      }
-
-      # Log pour les gènes sélectionnés
-      message("Selected genes: ", paste(selected_genes, collapse = ", "))
-
-      # Récupérer les identifiants des clusters pour chaque noyau
-      cluster_info <- FetchData(seurat_obj, vars = "ident")
-
-      # Log pour les informations des clusters
-      message("Cluster information: ", paste(unique(cluster_info$ident), collapse = ", "))
-
-      # Compter le nombre total de noyaux dans chaque cluster (tous les noyaux)
-      cluster_counts_total <- table(cluster_info$ident)
-
-      # Log pour le nombre total de noyaux dans chaque cluster
-      message("Total nuclei per cluster: ", paste(names(cluster_counts_total), "=", cluster_counts_total, collapse = ", "))
-
-      # Initialiser une liste pour stocker les résumés d'expression par gène
-      expression_summary_list <- lapply(selected_genes, function(gene) {
-        gene_data <- gene_data[gene, ]  # Extraire les données d'expression pour le gène
-
-        # Déterminer les noyaux exprimant le gène selon le seuil d'expression
-        expressed_indices <- gene_data > input$expression_threshold  # Utiliser le seuil ici
-
-        # Log pour vérifier combien de noyaux expriment ce gène
-        message("Nuclei expressing ", gene, ": ", sum(expressed_indices))
-
-        # Obtenir les clusters pour les noyaux exprimant le gène
-        clusters_expressing <- cluster_info[expressed_indices, "ident"]
-
-        # Compter le nombre de noyaux exprimant le gène par cluster
-        cluster_counts_expressed <- table(clusters_expressing)
-
-        # Log pour le nombre de noyaux exprimant le gène par cluster
-        message("Nuclei expressing ", gene, " per cluster: ", paste(names(cluster_counts_expressed), "=", cluster_counts_expressed, collapse = ", "))
-
-        # Créer un dataframe avec les résultats
-        df <- data.frame(
-          Gene = gene,
-          Cluster = names(cluster_counts_expressed),
-          Cells_Expressed = as.numeric(cluster_counts_expressed),  # Noyaux exprimant le gène
-          Total_Cells_in_Cluster = as.numeric(cluster_counts_total[names(cluster_counts_expressed)]),  # Nombre total de noyaux par cluster
-          Percentage_of_Cells = (as.numeric(cluster_counts_expressed) / as.numeric(cluster_counts_total[names(cluster_counts_expressed)])) * 100  # Pourcentage
-        )
-
-        return(df)
-      })
-
-      # Vérification des résultats valides et affichage
-      valid_expression_summary <- Filter(Negate(is.null), expression_summary_list)
-
-      # Si des résultats valides existent, les combiner en un seul dataframe
-      if (length(valid_expression_summary) > 0) {
-        expression_df <- do.call(rbind, valid_expression_summary)
-        message("Data for expression summary successfully created:")
-        print(expression_df)  # Log pour vérifier les données
-
-        # Mettre à jour la variable réactive
-        number_of_nuclei(expression_df)
-
-        # Afficher les résultats dans un tableau si les données sont présentes
-        output$expression_summary <- renderDataTable({
-          datatable(expression_df, options = list(pageLength = 10, scrollX = TRUE))
-        })
-      } else {
-        # Si aucun résultat n'est trouvé
-        showNotification("No results meet the thresholds specified.", type = "warning")
-        output$expression_summary <- renderDataTable({ NULL })  # Supprimer le tableau si aucun résultat n'est trouvé
-      }
-
-    }, error = function(e) {
-      showNotification(paste("Error processing expression data: ", e$message), type = "error")
-      print(paste("Error: ", e$message))  # Log complet de l'erreur pour debug
-    })
-  })
-
-
-
-  # Download gene comparison table
-  output$download_genes_number_expresion <- downloadHandler(
-    filename = function() {
-      paste("number_of_nuclei_expression", Sys.Date(), ".csv", sep="")
-    },
-    content = function(file) {
-      tryCatch({
-        req(number_of_nuclei())
-        write.csv(number_of_nuclei(), file, row.names = FALSE)
-      }, error = function(e) {
-        showNotification(paste0("Error downloading number of nuclei comparison table: ", e$message), type = "error")
-      })
-    },
-    contentType = "text/csv"
-  )
 
 
   ############################## Final UMAP ##############################
@@ -1746,19 +1296,17 @@ single_dataset_server <- function(input, output, session) {
   cluster_colours <- reactiveVal()  # Initialize a list to store cluster colors
 
   observe({
-    if (!is.null(single_dataset_object())) {
-      updateSelectInput(session, "select_cluster", choices = unique(Idents(single_dataset_object())))
-      updateSelectInput(session, "cluster_select", choices = unique(Idents(single_dataset_object())))
-
-    }
+    req(single_dataset_object())
+    updateClusterChoices(session, single_dataset_object(), list(select = c("select_cluster", "cluster_select")))
   })
 
-  #function for renaming each cluster
+
+  # Function for renaming each cluster
   observeEvent(input$rename_single_cluster_button, {
     req(input$select_cluster, input$rename_single_cluster, single_dataset_object())
-
+    
     updated_seurat <- single_dataset_object()
-
+    
     # Si le nouveau nom de cluster existe déjà, fusionnez les clusters
     if (input$rename_single_cluster %in% unique(Idents(updated_seurat))) {
       cells_to_merge <- which(Idents(updated_seurat) %in% c(input$select_cluster, input$rename_single_cluster))
@@ -1769,13 +1317,25 @@ single_dataset_server <- function(input, output, session) {
       Idents(updated_seurat, cells = which(Idents(updated_seurat) == input$select_cluster)) <- input$rename_single_cluster
       showNotification("Cluster renamed to: ", input$rename_single_cluster, type = "message")
     }
-
-    single_dataset_object(updated_seurat)  # Mettez à jour l'objet Seurat renommé
-    # Mettez à jour les options de sélection des clusters avec les nouveaux noms de clusters
+    
+    # AJOUT: Mettre à jour la colonne cluster_names avec les identifiants actuels
+    updated_seurat$cluster_names <- as.character(Idents(updated_seurat))
+    
+    # Vérifier que les noms sont correctement stockés
+    if(!all(sort(unique(as.character(Idents(updated_seurat)))) == 
+            sort(unique(as.character(updated_seurat$cluster_names))))) {
+      showNotification("Warning: Cluster names mismatch between Idents and metadata", type = "warning")
+    } else {
+      showNotification("Cluster names synchronized in metadata", type = "message")
+    }
+    
+    # Mettre à jour l'objet Seurat
+    single_dataset_object(updated_seurat)
+    
+    # Mettre à jour les options de sélection des clusters avec les nouveaux noms de clusters
     updateSelectInput(session, "select_cluster", choices = unique(Idents(single_dataset_object())))
     updateSelectInput(session, "cluster_select", choices = unique(Idents(single_dataset_object())))
   })
-
   # Fonction centralisée pour récupérer ou initialiser les couleurs des clusters
   get_cluster_colors <- function(seurat_object) {
     if (!is.null(seurat_object@misc$cluster_colors)) {
@@ -1853,13 +1413,45 @@ single_dataset_server <- function(input, output, session) {
   })
 
 
-
+  output$save_seurat_object_1 <- createDownloadHandler(
+    reactive_data = single_dataset_object,
+    object_name_reactive = reactive({ getObjectNameForDownload(single_dataset_object(), default_name = "SingleDataset") }),
+    data_name = "seurat_object",
+    download_type = "seurat",
+    show_modal = TRUE
+  )
+  
   ############################## Find markers for a specific cluster ##############################
 
   # Variables réactives pour cet onglet
   gene_tables_10 <- reactiveValues()
   all_markers_10 <- reactiveVal()
   umap_plot <- reactiveVal()
+  
+  
+  # Function to calculate all differential markers once only
+  clean_gene_names_for_html <- function(gene_names) {
+    tryCatch({
+      # Obtenir les noms de gènes originaux depuis les rownames
+      original_names <- rownames(single_dataset_object())
+      
+      # Ne supprimer les suffixes que si le nom de gène existe sans suffixe
+      cleaned_names <- sapply(gene_names, function(gene) {
+        base_name <- gsub("\\.\\d+$", "", gene)  # Supprime le .X à la fin
+        if (base_name %in% original_names) {
+          return(base_name)
+        }
+        return(gene)  # Garde le suffixe si nécessaire
+      })
+      
+      return(cleaned_names)
+    }, error = function(e) {
+      showNotification(paste("Error cleaning gene names:", e$message), type = "error")
+      return(gene_names)  # Retourne les noms non modifiés en cas d'erreur
+    })
+  }
+  
+  
 
   # UMAP pour un cluster spécifique avec couleurs mises à jour
   output$umap_plot <- renderPlot({
@@ -1898,45 +1490,64 @@ single_dataset_server <- function(input, output, session) {
     updateSelectInput(session, "cluster", choices = levels(single_dataset_object()))
   })
 
-  # Download handler for the UMAP plot
-  output$downloadUMAPCluster <- downloadHandler(
-    filename = function() {
-      paste("UMAP_plot", Sys.Date(), ".tiff", sep = "")
-    },
-    content = function(file) {
-      tryCatch({
-        req(umap_plot())
-        ggsave(file, plot = umap_plot(), dpi = input$dpi_umap_cluster, width = 10, height = 6)
-      }, error = function(e) {
-        # Log or notification of the error
-        showNotification(paste("Error in UMAP Plot: ", e$message), type = "error")
-      })
-    }
+  # Download handler for UMAP cluster plot
+  output$downloadUMAPCluster <- createDownloadHandler(
+    reactive_data = umap_plot,
+    object_name_reactive = reactive({ getObjectNameForDownload(single_dataset_object(), default_name = "UMAP_plot") }),
+    data_name = "UMAP",
+    download_type = "plot",
+    plot_params = list(
+      file_type = input$umap_cluster_format,
+      width = ifelse(input$umap_cluster_format == "pdf", 11, 10),
+      height = ifelse(input$umap_cluster_format == "pdf", 8, 6),
+      dpi = input$dpi_umap_cluster
+    )
   )
+  
+  # Download handler for Seurat object
+  output$save_seurat_object_3 <- createDownloadHandler(
+    reactive_data = single_dataset_object,
+    object_name_reactive = reactive({ getObjectNameForDownload(single_dataset_object(), default_name = "SingleDataset") }),
+    data_name = "seurat_object",
+    download_type = "seurat",
+    show_modal = TRUE
+  )
+  
 
-
-  # Fonction pour calculer tous les marqueurs différentiels pour le cluster choisi
   calculate_markers_for_cluster <- function() {
     # Vérifier que les objets et les entrées nécessaires sont disponibles
     req(single_dataset_object(), input$cluster, input$min_pct_single, input$logfc_threshold_single)
-
+    
     tryCatch({
       # Calcul des marqueurs différentiels
       markers <- FindMarkers(single_dataset_object(),
                              ident.1 = input$cluster,
                              min.pct = input$min_pct_single,
                              logfc.threshold = input$logfc_threshold_single)
-
+      
       # Formatage des valeurs p et ajustement des valeurs p pour l'affichage
       markers$p_val <- format(markers$p_val, scientific = TRUE, digits = 3)
       markers$p_val_adj <- format(markers$p_val_adj, scientific = TRUE, digits = 3)
       # Nettoyer les noms de gènes avant de générer le HTML
       cleaned_gene_names <- clean_gene_names_for_html(rownames(markers))
       markers$gene <- paste0('<a href="#" class="gene-name" data-gene="', cleaned_gene_names, '">', cleaned_gene_names, '</a>')
-
+      
       # Stocker les résultats dans une valeur réactive
       all_markers_10(markers)
-
+      
+      # Stocker dans la liste globale pour les diagrammes de Venn
+      table_name <- paste0("SingleDataset_Cluster_", input$cluster, "_vs_All_", format(Sys.time(), "%H%M%S"))
+      description <- paste0("Cluster ", input$cluster, " vs All Others")
+      parameters <- list(
+        min_pct = input$min_pct_single,
+        logfc_threshold = input$logfc_threshold_single
+      )
+      
+      result <- storeDETable(single_gene_table_storage(), markers, table_name, description, "cluster_group", parameters)
+      if (result$success) {
+        single_gene_table_storage(result$storage)
+      }
+      
       # Retourner TRUE en cas de succès
       return(TRUE)
     }, error = function(e) {
@@ -1946,7 +1557,7 @@ single_dataset_server <- function(input, output, session) {
       return(FALSE)
     })
   }
-
+  
   # Observer for the find_markers button
   observeEvent(input$find_markers, {
     tryCatch({
@@ -2013,59 +1624,75 @@ single_dataset_server <- function(input, output, session) {
   gene_tables_new <- reactiveValues()
   all_markers_new <- reactiveVal()
 
-  # Fonction améliorée pour calculer les marqueurs différentiels entre groupes de clusters
   calculate_markers_for_comparison <- function() {
     req(single_dataset_object(), input$cluster1, input$cluster2,
         input$min_pct_comparison, input$logfc_threshold_comparison)
-
+    
     tryCatch({
       # Vérifier qu'il n'y a pas de chevauchement entre les groupes
       if(any(input$cluster1 %in% input$cluster2)) {
         showNotification("Les groupes de clusters doivent être distincts", type = "error")
         return(FALSE)
       }
-
+      
       seurat_obj <- single_dataset_object()
-
+      
       # Créer une nouvelle identité pour les groupes de comparaison
       new_idents <- as.character(Idents(seurat_obj))
       new_idents[new_idents %in% input$cluster1] <- "group1"
       new_idents[new_idents %in% input$cluster2] <- "group2"
       Idents(seurat_obj) <- new_idents
-
+      
       # Calcul des marqueurs
       markers <- FindMarkers(seurat_obj,
                              ident.1 = "group1",
                              ident.2 = "group2",
                              min.pct = input$min_pct_comparison,
                              logfc.threshold = input$logfc_threshold_comparison)
-
+      
       # Formater les résultats
       markers$gene <- rownames(markers)
       markers$p_val <- format(markers$p_val, scientific = TRUE, digits = 3)
       markers$p_val_adj <- format(markers$p_val_adj, scientific = TRUE, digits = 3)
-
+      
       # Ajouter des informations sur les groupes comparés
       markers$comparison <- sprintf("Group1(%s) vs Group2(%s)",
                                     paste(input$cluster1, collapse=","),
                                     paste(input$cluster2, collapse=","))
-
+      
       # Ajouter les liens HTML
       cleaned_gene_names <- clean_gene_names_for_html(markers$gene)
       markers$gene <- paste0('<a href="#" class="gene-name" data-gene="',
                              cleaned_gene_names, '">',
                              cleaned_gene_names, '</a>')
-
+      
       # Stocker les résultats
       all_markers_new(markers)
+      
+      # Stocker dans la liste globale pour les diagrammes de Venn
+      group1_text <- paste(input$cluster1, collapse = "_")
+      group2_text <- paste(input$cluster2, collapse = "_")
+      table_name <- paste0("SingleDataset_Clusters_", group1_text, "_vs_", group2_text, "_", format(Sys.time(), "%H%M%S"))
+      description <- paste0("Clusters [", group1_text, "] vs [", group2_text, "]")
+      parameters <- list(
+        min_pct = input$min_pct_comparison,
+        logfc.threshold = input$logfc_threshold_comparison,
+        group1 = input$cluster1,
+        group2 = input$cluster2
+      )
+      
+      result <- storeDETable(single_gene_table_storage(), markers, table_name, description, "cluster_group", parameters)
+      if (result$success) {
+        single_gene_table_storage(result$storage)
+      }
+      
       return(TRUE)
-
+      
     }, error = function(e) {
       showNotification(paste("Error:", e$message), type = "error")
       return(FALSE)
     })
   }
-
 
 
   # Fonction pour mettre à jour le tableau de gènes pour cet onglet
@@ -2122,43 +1749,241 @@ single_dataset_server <- function(input, output, session) {
 
 
 
-  # Download gene comparison table
-  output$download_markers_single_cluster <- downloadHandler(
-    filename = function() {
-      paste("diff-genes-comparison-", input$cluster, "-VS-", "all_others_clusters", "-", Sys.Date(), ".csv", sep="")
-    },
-    content = function(file) {
-      tryCatch({
-        req(!is.null(all_markers_10))
-        all_markers_10_temp <- all_markers_10()
-        all_markers_10_temp_sorted <- all_markers_10_temp[order(all_markers_10_temp$p_val), ]
-        write.csv(all_markers_10_temp_sorted, file)
-      }, error = function(e) {
-        showNotification(paste0("Error downloading gene comparison table: ", e$message), type = "error")
-      })
-    },
-    contentType = "text/csv"
+  # Download gene comparison table - single cluster
+  output$download_markers_single_cluster <- createDownloadHandler(
+    reactive_data = reactive({ all_markers_10()[order(all_markers_10()$p_val), ] }),
+    object_name_reactive = reactive({ getObjectNameForDownload(single_dataset_object(), default_name = "DiffGenes") }),
+    data_name = reactive({ paste("comparison", input$cluster, "VS", "all_others_clusters", sep = "_") }),
+    download_type = "csv"
   )
-
-  # Download gene comparison table
-  output$download_markers_multiple_clusters <- downloadHandler(
-    filename = function() {
-      paste("diff-genes-comparison-", input$cluster1, "-VS-", input$cluster2, "-", Sys.Date(), ".csv", sep="")
-    },
-    content = function(file) {
-      tryCatch({
-        req(!is.null(all_markers_new))
-
-        all_markers_new_temp <- all_markers_new()
-        all_markers_new_temp_sorted <- all_markers_new_temp[order(all_markers_new_temp$p_val), ]
-        write.csv(all_markers_new_temp_sorted, file)
-      }, error = function(e) {
-        showNotification(paste0("Error downloading gene comparison table: ", e$message), type = "error")
-      })
-    },
-    contentType = "text/csv"
+  
+  # Download gene comparison table - multiple clusters
+  output$download_markers_multiple_clusters <- createDownloadHandler(
+    reactive_data = reactive({ all_markers_new()[order(all_markers_new()$p_val), ] }),
+    object_name_reactive = reactive({ getObjectNameForDownload(single_dataset_object(), default_name = "DiffGenes") }),
+    data_name = reactive({ paste("comparison", input$cluster1, "VS", input$cluster2, sep = "_") }),
+    download_type = "csv"
   )
+  
+  
+  
+######################################### Venn Diagramm ################################
+  
+  # Initialize reactive storage
+  single_gene_table_storage <- reactiveVal(list())
+  single_current_gene_lists <- reactiveVal(NULL)
+  single_venn_plot_rendered <- reactiveVal(NULL)
+  
+  # Update select inputs
+  observe({
+    updateVennSelectInputs(session, single_gene_table_storage(), c("venn_table_1_single", "venn_table_2_single", "venn_table_3_single"))
+  })
+  
+  # Enable/disable generate button
+  observe({
+    tables <- single_gene_table_storage()
+    if (length(tables) < 2) {
+      shinyjs::disable("generate_venn_btn_single")
+    } else {
+      shinyjs::enable("generate_venn_btn_single")
+    }
+  })
+  
+  # Generate Venn diagram
+  observeEvent(input$generate_venn_btn_single, {
+    showModal(modalDialog(title = "Generating Venn Diagram", "Processing...", easyClose = FALSE, footer = NULL))
+    result <- processVennGeneration(
+      table_storage = single_gene_table_storage(),
+      selected_tables = c(input$venn_table_1_single, input$venn_table_2_single, input$venn_table_3_single),
+      filter_params = list(
+        significant_only = c(input$significant_only_venn_1_single, input$significant_only_venn_2_single, input$significant_only_venn_3_single),
+        log_fc_threshold = c(input$log_fc_threshold_venn_1_single, input$log_fc_threshold_venn_2_single, input$log_fc_threshold_venn_3_single),
+        p_val_threshold = input$p_val_threshold_venn_single,
+        use_adjusted_p = input$use_adjusted_p_venn_single,
+        direction = input$venn_direction_single
+      ),
+      colors = c(input$venn_color_1_single, input$venn_color_2_single, input$venn_color_3_single)
+    )
+    
+    removeModal()
+    
+    if (result$success) {
+      single_venn_plot_rendered(result$venn_plot)
+      single_current_gene_lists(result$overlaps)
+      updateSelectInput(session, "selected_gene_set_single", choices = names(result$overlaps))
+      shinyjs::enable("download_venn_diagram_single")
+    } else {
+      showNotification(result$message, type = "error")
+    }
+  })
+  
+  # Render Venn diagram
+  output$venn_plot_single <- renderPlot({
+    req(single_venn_plot_rendered())
+    grid.draw(single_venn_plot_rendered())
+  })
+  
+  # Display gene table
+  output$venn_gene_table_single <- renderDT({
+    req(single_current_gene_lists(), input$selected_gene_set_single)
+    overlaps <- single_current_gene_lists()
+    selected_genes <- overlaps[[input$selected_gene_set_single]]
+    if (length(selected_genes) == 0) {
+      return(data.frame(Gene = character(0)))
+    }
+    gene_df <- data.frame(Gene = selected_genes)
+    datatable(gene_df, options = list(pageLength = 15, scrollX = TRUE, dom = 'Bfrtip', buttons = c('copy', 'csv', 'excel')), rownames = FALSE)
+  })
+  
+  
 
+  
+  
+  output$download_venn_diagram_single <- createDownloadHandler(
+    reactive_data = single_venn_plot_rendered,
+    object_name_reactive = reactive({ getObjectNameForDownload(single_dataset_object(), default_name = "VennDiagram") }),
+    data_name = "venn_comparison",
+    download_type = "plot",
+    plot_params = list(
+      file_type = input$venn_diagram_format_single,
+      width = 8,
+      height = 6,
+      dpi = input$venn_diagram_dpi_single
+    )
+  )
+  
+
+  output$download_venn_gene_lists_single <- createDownloadHandler(
+    reactive_data = single_current_gene_lists,
+    object_name_reactive = reactive({ getObjectNameForDownload(single_dataset_object(), default_name = "VennDiagram") }),
+    data_name = "gene_lists",
+    download_type = "ods"
+  )
+  
+##########################CLuster Composition#########################
+  
+  # Add this reactive value with other reactive values in single dataset server
+  cluster_composition_single <- reactiveVal(NULL)
+  
+  # Observer for generating cluster composition table for single dataset
+  observeEvent(input$generate_cluster_composition_single, {
+    req(single_dataset_object())
+    
+    tryCatch({
+      cluster_composition <- create_cluster_composition_table(
+        single_dataset_object(),
+        is_integrated = FALSE
+      )
+      cluster_composition_single(cluster_composition)
+      
+    }, error = function(e) {
+      showNotification(paste("Error:", e$message), type = "error")
+    })
+  })
+  
+  output$cluster_composition_single <- renderDT({
+    req(cluster_composition_single())
+    render_cluster_composition_table(cluster_composition_single(), is_integrated = FALSE)
+  })
+  
+  # Download handler for single dataset cluster composition
+  output$download_cluster_composition_single <- createDownloadHandler(
+    reactive_data = reactive({ 
+      data <- cluster_composition_single()
+      data$Size_Bar <- NULL  # Remove HTML column
+      return(data)
+    }),
+    object_name_reactive = reactive({ getObjectNameForDownload(single_dataset_object(), default_name = "ClusterComposition") }),
+    data_name = "cluster_composition",
+    download_type = "csv"
+  )
+  
+  
+  #####################Co-expression###############################
+  # Add these reactive values at the beginning of your server function
+  gene_coexpression_data_single <- reactiveVal(NULL)
+  coexpression_plot_single <- reactiveVal(NULL)
+  
+  observeEvent(input$analyze_coexpression_single, {
+    req(single_dataset_object(), input$gene_text_coexpression_single)
+    
+    tryCatch({
+      # Validate input genes before analysis
+      genes_input <- trimws(strsplit(input$gene_text_coexpression_single, ",")[[1]])
+      genes_input <- genes_input[genes_input != ""]
+      
+      if (length(genes_input) == 0) {
+        showNotification("Please enter at least one gene name", type = "error")
+        return()
+      }
+      
+      # Analyze gene coexpression with proper error handling
+      coexpr_results <- analyze_gene_coexpression(
+        seurat_obj = single_dataset_object(),
+        genes = genes_input,  # ✅ Ensure genes is properly passed
+        assay_name = DefaultAssay(single_dataset_object()),
+        expression_threshold = input$coexpr_threshold_single %||% 0,
+        is_integrated = FALSE
+      )
+      
+      # Validate results before creating plot
+      if (is.null(coexpr_results) || is.null(coexpr_results$data)) {
+        showNotification("No coexpression data generated", type = "error")
+        return()
+      }
+      
+      # Store results
+      gene_coexpression_data_single(coexpr_results)
+      
+      # Create plot with proper validation
+      if (!is.null(coexpr_results$genes_analyzed) && length(coexpr_results$genes_analyzed) > 0) {
+        plot <- create_coexpression_plot(
+          data = coexpr_results$data, 
+          genes = coexpr_results$genes_analyzed  # ✅ Explicitly pass genes parameter
+        )
+        coexpression_plot_single(plot)
+      } else {
+        showNotification("No genes available for plotting", type = "error")
+      }
+      
+    }, error = function(e) {
+      showNotification(paste("Error in coexpression analysis:", e$message), type = "error")
+      message("Coexpression error details: ", e$message)
+    })
+  })
+  
+  output$gene_coexpression_table_single <- renderDT({
+    req(gene_coexpression_data_single())
+    render_coexpression_table(gene_coexpression_data_single(), "gene_coexpression_table_single")
+  })
+  
+
+  # Render plot
+  output$gene_coexpression_plot_single <- renderPlot({
+    req(coexpression_plot_single())
+    coexpression_plot_single()
+  }, height = 600)
+  
+  # Download handlers for coexpression analysis
+  output$download_coexpression_table_single <- createDownloadHandler(
+    reactive_data = gene_coexpression_data_single,
+    object_name_reactive = reactive({ getObjectNameForDownload(single_dataset_object(), default_name = "Coexpression") }),
+    data_name = "coexpression_analysis",
+    download_type = "csv"
+  )
+  
+  output$download_coexpression_plot_single <- createDownloadHandler(
+    reactive_data = coexpression_plot_single,
+    object_name_reactive = reactive({ getObjectNameForDownload(single_dataset_object(), default_name = "Coexpression") }),
+    data_name = "coexpression_plot",
+    download_type = "plot",
+    plot_params = list(
+      file_type = "pdf",
+      width = 10,
+      height = 8,
+      dpi = 300
+    )
+  )
   ############################## Subseting ##############################
 
   # Variables wich stock the subset of single_dataset_object()
@@ -2263,34 +2088,14 @@ single_dataset_server <- function(input, output, session) {
 
 
   # Downloading Seurat subset object
-  output$download_subset_seurat <- downloadHandler(
-    filename = function() {
-      paste("seurat_subset_", Sys.Date(), ".rds", sep="")
-    },
-    content = function(file) {
-      # Display the modal box
-      showModal(modalDialog(
-        title = "Please Wait",
-        "Preparing the seurat object for download...",
-        easyClose = FALSE,
-        footer = NULL
-      ))
-
-      tryCatch({
-        req(subset_seurat())
-        saveRDS(subset_seurat(), file)
-
-        # Remove the modal box after saving the Seurat subset
-        removeModal()
-
-      }, error = function(e) {
-        removeModal()
-        showNotification(paste0("Error while downloading Seurat subset: ", e$message), type = "error")
-      })
-    }
+  output$download_subset_seurat <- createDownloadHandler(
+    reactive_data = subset_seurat,
+    object_name_reactive = reactive({ getObjectNameForDownload(single_dataset_object(), default_name = "SeuratSubset") }),
+    data_name = "seurat_subset",
+    download_type = "seurat",
+    show_modal = TRUE
   )
-
-
+  
   # Umap plot with all clusters
   reactivePlotAll <- reactive({
     req(single_dataset_object())
