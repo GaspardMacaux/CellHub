@@ -1,4 +1,4 @@
-Xversion: "2"
+version: "2"
 
 build:
   os: "ubuntu-22.04"
@@ -7,7 +7,7 @@ build:
 
 python:
   install:
-    - requirements:Documentation_app/docs/requirements.txt
+    - requirements: Documentation_app/docs/requirements.txt
 
 sphinx:
   configuration: Documentation_app/docs/source/conf.py
