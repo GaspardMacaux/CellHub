@@ -1,0 +1,28 @@
+# macOS
+.DS_Store
+._.DS_Store
+._*
+
+# R
+.Rhistory
+.RData
+.RDataTmp
+.Ruserdata
+
+# Temporary files
+*~
+*.tmp
+# macOS
+.DS_Store
+._.DS_Store
+._*
+
+# R
+.Rhistory
+.RData
+.RDataTmp
+.Ruserdata
+
+# Temporary files
+*~
+*.tmp
