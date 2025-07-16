@@ -14,7 +14,7 @@ This section performs quality control and data preprocessing - essential steps b
   - Percentage of mitochondrial genes (percent.mt)
 - These plots help you identify outlier cells and set appropriate filtering thresholds
 
-![](../_static/images/single_dataset_analysis/qc_single.tiff)
+![](../_static/images/single_dataset_analysis/qc_single.png)
 
 **Feature Scatter Plots**
 - Click "Feature Scatter Plots" to see relationships between metrics:
@@ -61,7 +61,7 @@ Once you apply QC filters, filtered cells are permanently removed from the analy
 - This standardizes expression values and selects genes for clustering
 - A plot will show the most variable genes with labels
 
-![](../_static/images/single_dataset_analysis/normalise_single.tiff)
+![](../_static/images/single_dataset_analysis/normalise_single.png)
 
 ```{tip}
 Start with default parameters (200-2500 genes, 5% mitochondrial, 2000 variable features) and adjust based on your specific dataset and experimental conditions.

@@ -13,7 +13,7 @@ This section allows you to assign biological names to your clusters based on the
 
 ### How to Rename Clusters
 
-![](../_static/images/single_dataset_analysis/menu_assinging_single.tiff)
+![](../_static/images/single_dataset_analysis/menu_assinging_single.png)
 
 **Step 1: Identify Your Cluster**
 - Use the "Select cluster" dropdown to choose which cluster to rename
@@ -55,7 +55,7 @@ This section allows you to assign biological names to your clusters based on the
 - Ensure sufficient contrast between similar cell types
 - Keep colors consistent across related analyses
 
-![](../_static/images/single_dataset_analysis/renaming_single.tiff)
+![](../_static/images/single_dataset_analysis/renaming_single.png)
 
 ## Validation Tools
 
@@ -72,7 +72,7 @@ This section allows you to assign biological names to your clusters based on the
 - Use these plots to validate your cell type assignments
 - Check if marker genes are expressed in the clusters you expect
 
-![](../_static/images/single_dataset_analysis/feature_renaming_single.tiff)
+![](../_static/images/single_dataset_analysis/feature_renaming_single.png)
 
 **How to Use for Validation**
 1. **Select plot type** that best shows your validation genes

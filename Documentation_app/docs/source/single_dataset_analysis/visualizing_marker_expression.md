@@ -12,7 +12,7 @@ This section provides multiple visualization methods to explore gene expression 
 - Multiple genes can be selected simultaneously
 - **Auto-fill feature**: Selected genes automatically populate all plot sections below
 
-![](../_static/images/single_dataset_analysis/gene_selection_single.tiff)
+![](../_static/images/single_dataset_analysis/gene_selection_single.png)
 
 ### Manual Gene Entry
 **Individual Plot Customization**
@@ -43,7 +43,7 @@ This section provides multiple visualization methods to explore gene expression 
 - **Cutoff controls**: Set thresholds to highlight only high-expressing cells
 - **Display options**: Remove axes and legends for cleaner figures
 
-![](../_static/images/single_dataset_analysis/feature_single.tiff)
+![](../_static/images/single_dataset_analysis/feature_single.png)
 
 ### Violin Plot
 **When to use**: To compare expression levels between clusters - see which clusters express your gene highest
@@ -54,7 +54,7 @@ This section provides multiple visualization methods to explore gene expression 
 - Wider sections = more cells with that expression level
 - Points show individual cells (can be hidden)
 
-![](../_static/images/single_dataset_analysis/violin_single.tiff)
+![](../_static/images/single_dataset_analysis/violin_single.png)
 
 **Configuration Options:**
 - **Cluster selection**: Focus on specific clusters of interest
@@ -70,7 +70,7 @@ This section provides multiple visualization methods to explore gene expression 
 - Each row = one gene, each column = one cluster
 - Best for systematic marker comparison
 
-![](../_static/images/single_dataset_analysis/dot_single.tiff)
+![](../_static/images/single_dataset_analysis/dot_single.png)
 
 **Settings:**
 - **Cluster selection**: Include only clusters you want to compare
@@ -97,7 +97,7 @@ This section provides multiple visualization methods to explore gene expression 
 - **Expression threshold**: Minimum expression level to count as "expressing"
 - **Analysis scope**: Examines all selected genes across all clusters
 
-![](../_static/images/single_dataset_analysis/gene_expression_single.tiff)
+![](../_static/images/single_dataset_analysis/gene_expression_single.png)
 
 **Analysis Output:**
 - Table showing number and percentage of expressing cells per cluster

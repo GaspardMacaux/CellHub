@@ -15,7 +15,7 @@ This section identifies differentially expressed genes between clusters to under
 ### Step 1: Global Comparison (One vs All Others)
 **When to use**: Find genes that uniquely characterize a specific cluster
 
-![](../_static/images/single_dataset_analysis/1vsall_single.tiff)
+![](../_static/images/single_dataset_analysis/1vsall_single.png)
 
 **How to set up**:
 1. **Select target cluster** from "Target Cluster" dropdown
@@ -38,7 +38,7 @@ This section identifies differentially expressed genes between clusters to under
 3. **Use same statistical parameters** as above
 4. **Click "Compare Groups"** to run analysis
 
-![](../_static/images/single_dataset_analysis/1vsall_single.tiff)
+![](../_static/images/single_dataset_analysis/1vsall_single.png)
 
 **What you get**: Genes that differ between your two selected groups
 
@@ -74,7 +74,7 @@ This section identifies differentially expressed genes between clusters to under
 ### Step 3: Venn Diagram Analysis
 **When to use**: Compare gene lists from multiple differential expression analyses
 
-![](../_static/images/single_dataset_analysis/venn_single.tiff)
+![](../_static/images/single_dataset_analysis/venn_single.png)
 
 **How to set up**:
 1. **Select gene lists**: Choose up to 3 previously generated comparison results
@@ -94,7 +94,7 @@ This section identifies differentially expressed genes between clusters to under
 ### Step 4: Cluster Composition Analysis
 **When to use**: Get quantitative overview of your cluster sizes and distributions
 
-![](../_static/images/single_dataset_analysis/clustercompo_single.tiff)
+![](../_static/images/single_dataset_analysis/clustercompo_single.png)
 
 **How to set up**:
 1. **Click "Generate Cluster Composition"** 
@@ -108,7 +108,7 @@ This section identifies differentially expressed genes between clusters to under
 ### Step 5: Gene Co-expression Analysis
 **When to use**: Examine how multiple genes are expressed together across clusters
 
-![](../_static/images/single_dataset_analysis/dualtab_single.tiff)
+![](../_static/images/single_dataset_analysis/dualtab_single.png)
 
 **How to set up**:
 1. **Enter genes** of interest (comma-separated)

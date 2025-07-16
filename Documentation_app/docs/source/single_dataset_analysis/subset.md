@@ -55,7 +55,7 @@ This section allows you to create focused datasets by selecting specific cell po
 - Identify cells in specific pathway states
 - Select cells with particular transcriptional signatures
 
-![](../_static/images/single_dataset_analysis/subset_single.tiff)
+![](../_static/images/single_dataset_analysis/subset_single.png)
 
 ## Analysis Pipeline
 

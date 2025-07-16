@@ -42,7 +42,7 @@ This section provides advanced visualization tools to explore relationships betw
 - **Color scale**: Usually red = high expression, blue = low expression
 - **Patterns**: Look for genes that are high in some clusters, low in others
 
-![](../_static/images/single_dataset_analysis/heatmap_single.tiff)
+![](../_static/images/single_dataset_analysis/heatmap_single.png)
 
 ## Dual Expression Analysis
 
@@ -76,7 +76,7 @@ This section provides advanced visualization tools to explore relationships betw
 - **Scattered pattern**: Genes are independently expressed
 - **Corner clusters**: One gene high, other low (mutually exclusive)
 
-![](../_static/images/single_dataset_analysis/dualexpression_single.tiff)
+![](../_static/images/single_dataset_analysis/dualexpression_single.png)
 
 ## Analysis Pipeline
 

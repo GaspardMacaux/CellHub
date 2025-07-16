@@ -26,7 +26,7 @@ This step reduces data complexity while preserving biological signals. Single-ce
 - PCA calculates principal components from the variable features identified earlier
 - Results show PCA table with top contributing genes and loading plots
 
-![](../_static/images/single_dataset_analysis/pca_single.tiff)
+![](../_static/images/single_dataset_analysis/pca_single.png)
 
 ### Step 2: Determine Optimal Number of Components
 
@@ -35,7 +35,7 @@ This step reduces data complexity while preserving biological signals. Single-ce
 - The plot shows percentage of variance on Y-axis vs principal components on X-axis
 - Look for the "elbow" - the point where adding more components gives diminishing returns
 
-![](../_static/images/single_dataset_analysis/elbow_single.tiff)
+![](../_static/images/single_dataset_analysis/elbow_single.png)
 
 **How to Read the Elbow Plot:**
 - Sharp drop initially = first components capture major variation

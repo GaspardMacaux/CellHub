@@ -5,7 +5,7 @@ This section allows you to load and initialize your single-cell RNA sequencing d
 
 ## Data Types and Requirements
 
-![](../_static/images/single_dataset_analysis/load_single.tiff)
+![](../_static/images/single_dataset_analysis/load_single.png)
 
 ### Option 1: Raw 10X Genomics Data
 Required files (compressed in a single `.zip`):

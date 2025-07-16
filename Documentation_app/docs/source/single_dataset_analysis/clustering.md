@@ -24,7 +24,7 @@ Clustering groups cells with similar gene expression patterns to identify distin
 
 ### Step 1: Find Cell Neighbors
 
-![](../_static/images/single_dataset_analysis/cluster_tab_single.tiff)
+![](../_static/images/single_dataset_analysis/cluster_tab_single.png)
 
 **Number of Dimensions**
 - Select how many principal components to use (default: 10)
@@ -37,7 +37,7 @@ Clustering groups cells with similar gene expression patterns to identify distin
 - Creates a shared nearest neighbor graph
 - Also automatically runs UMAP for visualization
 
-![](../_static/images/single_dataset_analysis/voisin_single.tiff)
+![](../_static/images/single_dataset_analysis/voisin_single.png)
 
 ### Step 2: Identify Clusters
 
@@ -57,7 +57,7 @@ Clustering groups cells with similar gene expression patterns to identify distin
 - Click "Find clusters" to group cells based on the neighbor graph
 - Results show clusters colored on the UMAP plot
 
-![](../_static/images/single_dataset_analysis/cluster_single.tiff)
+![](../_static/images/single_dataset_analysis/cluster_single.png)
 
 ### Step 3: Export Results
 
